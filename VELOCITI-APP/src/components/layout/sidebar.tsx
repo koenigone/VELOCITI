@@ -1,4 +1,4 @@
-import { Box, VStack, Input, Text, Heading } from '@chakra-ui/react';
+import { Box, VStack, Input, Text } from '@chakra-ui/react';
 
 const Sidebar = () => {
   return (

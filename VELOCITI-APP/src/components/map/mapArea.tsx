@@ -1,5 +1,5 @@
 import 'leaflet/dist/leaflet.css';
-import { Box, Button, Menu, MenuButton, MenuList, MenuItem, VStack } from '@chakra-ui/react';
+import { Box, Button, Menu, MenuButton, MenuList, MenuItem } from '@chakra-ui/react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { useState } from 'react';
 
