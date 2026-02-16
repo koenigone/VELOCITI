@@ -2,9 +2,23 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import stationData from "../../data/TiplocPublicExport_2025-12-01_094655.json";
+import stationDataRaw from "../../data/TiplocPublicExport_2025-12-01_094655.json";
 
-// Fix Leaflet default icon issue
+type Tiploc = {
+  Name: string;
+  Tiploc: string;
+  Latitude: number;
+  Longitude: number;
+};
+
+type TiplocExport = {
+  ExportDate: string;
+  ExportCount: number;
+  Tiplocs: Tiploc[];
+};
+
+const stationData = stationDataRaw as TiplocExport;
+
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl:
@@ -29,24 +43,21 @@ export default function MapArea() {
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {stations.slice(0, 300).map((station: any, index: number) => {
-        if (!station.Latitude || !station.Longitude) return null;
-
-        return (
-          <Marker
-            key={index}
-            position={[station.Latitude, station.Longitude]}
-          >
-            <Popup>
-              <strong>{station.Name}</strong>
-              <br />
-              TIPLOC: {station.Tiploc}
-            </Popup>
-          </Marker>
-        );
-      })}
+      {stations.slice(0, 300).map((station, index) => (
+        <Marker
+          key={index}
+          position={[station.Latitude, station.Longitude]}
+        >
+          <Popup>
+            <strong>{station.Name}</strong>
+            <br />
+            TIPLOC: {station.Tiploc}
+          </Popup>
+        </Marker>
+      ))}
     </MapContainer>
   );
 }
+
 
 
