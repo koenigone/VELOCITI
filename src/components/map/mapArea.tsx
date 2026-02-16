@@ -1,7 +1,9 @@
 import 'leaflet/dist/leaflet.css';
 import { Box, Button, Menu, MenuButton, MenuList, MenuItem } from '@chakra-ui/react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Spinner, Alert, AlertIcon,} from "@chakra-ui/react";
+
 
 import { FaLayerGroup } from "react-icons/fa";
 import { MdOutlineZoomInMap } from "react-icons/md";
@@ -120,6 +122,46 @@ const MapArea = () => {
     const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);     // layer state
     const [resetMapFn, setResetMapFn] = useState<(() => void) | null>(null); // reset function state
 
+    //isLoading essentially controls when spinner shows
+    const [isLoading, setIsLoading] = useState(true); //starts as true when application loads
+    //error on the other hand controls when alert shows
+    const [error, setError] = useState<string | null>(null); 
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            // change this to simulate failure
+            const shouldFail = false;
+
+            if (shouldFail) {
+                setError("Sorry, unable to load rail data... Please try again!");
+            }
+
+            setIsLoading(false);
+        }, 1200); // essentially waits 1.2 seconds before ending loading
+
+        return () => clearTimeout(timer); //clears up to prevents timer running if component unmounts
+    }, []);
+
+    //the visual of isLoading
+    if (isLoading) {
+        return (
+            <Box w="full" h="full" position="relative" id="map-container" display="flex" alignItems="center" justifyContent="center">
+                <Spinner size="xl" />
+            </Box>
+        );
+    }
+
+    if (error) {
+        return (
+            <Box w="full" h="full" position="relative" id="map-container" p="6">
+                <Alert status="error">
+                    <AlertIcon />
+                    {error}
+                </Alert>
+            </Box>
+        );
+    }
+
     return (
         <Box w="full" h="full" position="relative" id="map-container">
 
@@ -142,6 +184,11 @@ const MapArea = () => {
                     key={activeLayer.name}
                     attribution={activeLayer.attribution}
                     url={activeLayer.url}
+                    eventHandlers={{
+                        tileerror: () => {
+                            setError("Sorry, unable to load rail data... Please try again!");
+                        },
+                    }}
                 />
 
                 <Marker position={[51.505, -0.09]}>
