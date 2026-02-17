@@ -6,7 +6,7 @@ import { FaLayerGroup } from "react-icons/fa";
 import { MdOutlineZoomInMap } from "react-icons/md";
 import L from 'leaflet';
 import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
-import type { TiplocData } from '../../types';
+import type { TiplocData, MapTarget } from '../../types';
 
 // configs
 const UK_CENTER: [number, number] = [54.5, -2.5];
@@ -37,21 +37,58 @@ const MAP_LAYERS = {
     },
 };
 
+// controller component to handle map interactions based on props changes (targetView, selectedTrain)
+const MapController = ({ targetView, selectedTrain }: { targetView: MapTarget | null, selectedTrain: any | null }) => {
+    const map = useMap();
+
+    // handle explicit station target (from Search)
+    useEffect(() => {
+        if (targetView) {
+            map.flyTo([targetView.lat, targetView.lng], targetView.zoom || 14);
+        }
+    }, [targetView, map]);
+
+    // handle Train selection (Resolve location -> FlyTo)
+    useEffect(() => {
+        if (!selectedTrain) return;
+
+        // logic:
+        //  -Try to find the coordinate of the "last reported location"
+        //  -fallback to "origin tiploc"
+
+        let foundLocation: TiplocData | undefined;
+
+        if (selectedTrain.lastReportedLocation) {
+            foundLocation = tiplocs.find(t => t.Name === selectedTrain.lastReportedLocation);
+        }
+
+        if (!foundLocation && selectedTrain.originTiploc) {
+            foundLocation = tiplocs.find(t => t.Tiploc === selectedTrain.originTiploc);
+        }
+
+        if (foundLocation && foundLocation.Latitude && foundLocation.Longitude) {
+            map.flyTo([foundLocation.Latitude, foundLocation.Longitude], 15);
+
+        } else {
+            console.warn("Could not resolve location for train:", selectedTrain);
+        }
+
+    }, [selectedTrain, map]);
+
+    return null;
+};
+
 // canvas layer - drawing tiplocs as icons on canvas for better performance with many points
 const TiplocCanvasLayer = () => {
     const map = useMap();
 
     useEffect(() => {
         if (!map) return;
-
-        // create a custom canvas renderer for better performance with many markers
         const myRenderer = L.canvas({ padding: 0.5 });
 
-        // loop through all 16k tiplocs
         const markers = tiplocs.map((t) => {
             if (!t.Latitude || !t.Longitude) return null;
 
-            // create custom circle markers for tiplocs (could be changed later)
             const marker = L.circleMarker([t.Latitude, t.Longitude], {
                 renderer: myRenderer,
                 radius: 4,
@@ -61,7 +98,6 @@ const TiplocCanvasLayer = () => {
                 weight: 1
             });
 
-            // marker popup content
             marker.bindPopup(`
                 <div style="font-family: sans-serif;">
                     <h3 style="margin:0 0 5px;">${t.Name}</h3>
@@ -69,30 +105,18 @@ const TiplocCanvasLayer = () => {
                     ${t.Details.CRS ? `<b>CRS:</b> ${t.Details.CRS}` : ''}
                 </div>
             `);
-
             return marker;
-        }).filter((m): m is L.CircleMarker => m !== null); // filter out any nulls from missing lat/lon
+        }).filter((m): m is L.CircleMarker => m !== null);
 
         const layerGroup = L.featureGroup(markers).addTo(map);
-
-        // clean up on unmount
-        return () => {
-            layerGroup.remove(); // remove the entire layer group (and all markers) from the map
-        };
+        return () => { layerGroup.remove(); };
     }, [map]);
 
     return null;
 };
 
 // map controls section
-const MapControls = ({ currentLayer, onLayerChange }: any) => {
-    const map = useMap();
-
-    const handleReset = () => {
-        map.setView(UK_CENTER, DEFAULT_ZOOM, { animate: true });
-    };
-
-    // custom button styles
+const MapControls = ({ currentLayer, onLayerChange, onReset }: any) => {
     const glassButtonStyle = {
         bg: "whiteAlpha.800",
         backdropFilter: "blur(3px)",
@@ -109,56 +133,17 @@ const MapControls = ({ currentLayer, onLayerChange }: any) => {
     };
 
     return (
-        <Box
-            position="absolute"
-            top="4"
-            right="4"
-            zIndex={1000}
-            display="flex"
-            flexDirection="column"
-            gap={3}
-        >
-            {/* RESET BUTTON */}
-            <Button
-                {...glassButtonStyle}
-                onClick={handleReset}
-                leftIcon={<MdOutlineZoomInMap fontSize="1.1rem" color="#3182ce" />}
-            >
+        <Box position="absolute" top="4" right="4" zIndex={1000} display="flex" flexDirection="column" gap={3}>
+            <Button {...glassButtonStyle} onClick={onReset} leftIcon={<MdOutlineZoomInMap fontSize="1.1rem" color="#3182ce" />}>
                 Reset Map
             </Button>
-
-            {/* LAYER MENU */}
             <Menu matchWidth>
-                <MenuButton
-                    as={Button}
-                    {...glassButtonStyle}
-                    leftIcon={<FaLayerGroup fontSize="1rem" color="#3182ce" />}
-                    textAlign="left"
-                >
-                    <Box as="span" isTruncated>
-                        {currentLayer.name}
-                    </Box>
+                <MenuButton as={Button} {...glassButtonStyle} leftIcon={<FaLayerGroup fontSize="1rem" color="#3182ce" />} textAlign="left">
+                    <Box as="span" isTruncated>{currentLayer.name}</Box>
                 </MenuButton>
-
-                <MenuList
-                    zIndex={1001}
-                    fontSize="sm"
-                    shadow="xl"
-                    bg="whiteAlpha.900"
-                    backdropFilter="blur(8px)"
-                    border="1px solid"
-                    borderColor="gray.100"
-                    p={1}
-                >
+                <MenuList zIndex={1001} fontSize="sm" shadow="xl" bg="whiteAlpha.900" backdropFilter="blur(8px)">
                     {Object.values(MAP_LAYERS).map((layer) => (
-                        <MenuItem
-                            key={layer.name}
-                            onClick={() => onLayerChange(layer)}
-                            fontWeight={currentLayer.name === layer.name ? "600" : "normal"}
-                            color={currentLayer.name === layer.name ? "blue.600" : "gray.600"}
-                            borderRadius="md"
-                            _hover={{ bg: "blue.50" }}
-                        >
+                        <MenuItem key={layer.name} onClick={() => onLayerChange(layer)} fontWeight={currentLayer.name === layer.name ? "600" : "normal"}>
                             {layer.name}
                         </MenuItem>
                     ))}
@@ -168,8 +153,13 @@ const MapControls = ({ currentLayer, onLayerChange }: any) => {
     );
 };
 
+interface MapAreaProps {
+    targetView?: MapTarget | null;
+    selectedTrain?: any | null;
+}
+
 // main map component
-const MapArea = () => {
+const MapArea = ({ targetView, selectedTrain }: MapAreaProps) => {
     const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
 
     return (
@@ -182,6 +172,8 @@ const MapArea = () => {
                 zoomControl={false}
                 preferCanvas={true}
             >
+                <MapController targetView={targetView || null} selectedTrain={selectedTrain || null} />
+
                 <MapControls
                     currentLayer={activeLayer}
                     onLayerChange={setActiveLayer}
@@ -192,7 +184,6 @@ const MapArea = () => {
                     attribution={activeLayer.attribution}
                     url={activeLayer.url}
                 />
-
                 <TiplocCanvasLayer />
             </MapContainer>
         </Box>
