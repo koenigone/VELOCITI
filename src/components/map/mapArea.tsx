@@ -1,5 +1,5 @@
 import 'leaflet/dist/leaflet.css';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Box, Button, Menu, MenuButton, MenuList, MenuItem } from '@chakra-ui/react';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import { FaLayerGroup } from "react-icons/fa";
@@ -7,10 +7,8 @@ import { MdOutlineZoomInMap } from "react-icons/md";
 import L from 'leaflet';
 import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
 import type { TiplocData } from '../../types';
-import trainIcon from '../../assets/trainMarker.png';
 
 // configs
-const ICON_SIZE = 25;
 const UK_CENTER: [number, number] = [54.5, -2.5];
 const DEFAULT_ZOOM = 6;
 const tiplocs = (tiplocDataRaw as any).Tiplocs as TiplocData[];
@@ -42,100 +40,44 @@ const MAP_LAYERS = {
 // canvas layer - drawing tiplocs as icons on canvas for better performance with many points
 const TiplocCanvasLayer = () => {
     const map = useMap();
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const imageRef = useRef<HTMLImageElement | null>(null);
 
     useEffect(() => {
         if (!map) return;
 
-        const canvas = L.DomUtil.create('canvas', 'leaflet-zoom-animated');
-        const pane = map.getPane('overlayPane');
-        if (pane) pane.appendChild(canvas);
-        canvasRef.current = canvas;
+        // create a custom canvas renderer for better performance with many markers
+        const myRenderer = L.canvas({ padding: 0.5 });
 
-        const img = new Image();
-        img.src = trainIcon;
-        img.onload = () => {
-            imageRef.current = img;
-            drawLayer();
-        };
+        // loop through all 16k tiplocs
+        const markers = tiplocs.map((t) => {
+            if (!t.Latitude || !t.Longitude) return null;
 
-        const drawLayer = () => {
-            if (!map || !canvas || !imageRef.current) return;
-
-            const size = map.getSize();
-            const bounds = map.getBounds();
-            canvas.width = size.x;
-            canvas.height = size.y;
-
-            const topLeft = map.containerPointToLayerPoint([0, 0]);
-            L.DomUtil.setPosition(canvas, topLeft);
-
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return;
-
-            const paddedBounds = bounds.pad(0.1);
-
-            tiplocs.forEach((t) => {
-                if (t.Latitude && t.Longitude) {
-                    if (paddedBounds.contains([t.Latitude, t.Longitude])) {
-                        const point = map.latLngToContainerPoint([t.Latitude, t.Longitude]);
-                        const halfSize = ICON_SIZE / 2;
-                        ctx.drawImage(
-                            imageRef.current!,
-                            Math.floor(point.x - halfSize),
-                            Math.floor(point.y - halfSize),
-                            ICON_SIZE,
-                            ICON_SIZE
-                        );
-                    }
-                }
+            // create custom circle markers for tiplocs (could be changed later)
+            const marker = L.circleMarker([t.Latitude, t.Longitude], {
+                renderer: myRenderer,
+                radius: 4,
+                color: '#3388ff',
+                fillColor: '#3388ff',
+                fillOpacity: 0.8,
+                weight: 1
             });
-        };
 
-        const onMapClick = (e: L.LeafletMouseEvent) => {
-            const clickLat = e.latlng.lat;
-            const clickLng = e.latlng.lng;
-            let closest: TiplocData | null = null;
-            let minDistance = Infinity;
-            const threshold = 0.005 * Math.pow(2, 10 - map.getZoom());
+            // marker popup content
+            marker.bindPopup(`
+                <div style="font-family: sans-serif;">
+                    <h3 style="margin:0 0 5px;">${t.Name}</h3>
+                    <b>TIPLOC:</b> ${t.Tiploc}<br/>
+                    ${t.Details.CRS ? `<b>CRS:</b> ${t.Details.CRS}` : ''}
+                </div>
+            `);
 
-            for (const t of tiplocs) {
-                if (!t.Latitude || !t.Longitude) continue;
-                const dist = Math.sqrt(
-                    Math.pow(t.Latitude - clickLat, 2) +
-                    Math.pow(t.Longitude - clickLng, 2)
-                );
-                if (dist < minDistance) {
-                    minDistance = dist;
-                    closest = t;
-                }
-            }
+            return marker;
+        }).filter((m): m is L.CircleMarker => m !== null); // filter out any nulls from missing lat/lon
 
-            if (closest && minDistance < threshold) {
-                L.popup()
-                    .setLatLng([closest.Latitude, closest.Longitude])
-                    .setContent(`
-                        <div style="font-family: sans-serif; min-width: 150px;">
-                            <h3 style="margin:0 0 5px; font-weight:bold; color:#2b6cb0;">${closest.Name}</h3>
-                            <div style="font-size: 0.9em;">
-                                <b>TIPLOC:</b> ${closest.Tiploc}<br/>
-                                ${closest.Details.CRS ? `<b>CRS:</b> ${closest.Details.CRS}` : ''}
-                            </div>
-                        </div>
-                    `)
-                    .openOn(map);
-            }
-        };
+        const layerGroup = L.featureGroup(markers).addTo(map);
 
-        map.on('moveend zoomend', drawLayer);
-        map.on('click', onMapClick);
-        drawLayer();
-
+        // clean up on unmount
         return () => {
-            map.off('moveend zoomend', drawLayer);
-            map.off('click', onMapClick);
-            if (pane && canvas) pane.removeChild(canvas);
+            layerGroup.remove(); // remove the entire layer group (and all markers) from the map
         };
     }, [map]);
 
