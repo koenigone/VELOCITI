@@ -1,3 +1,5 @@
+import type { Stop } from '../../App';
+
 import 'leaflet/dist/leaflet.css';
 import { useState, useEffect } from 'react';
 import { Box, Button, Menu, MenuButton, MenuList, MenuItem } from '@chakra-ui/react';
@@ -7,6 +9,28 @@ import { MdOutlineZoomInMap } from "react-icons/md";
 import L from 'leaflet';
 import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
 import type { TiplocData } from '../../types';
+
+
+type MapAreaProps = {
+  onJourneyClick?: (stops: Stop[]) => void;
+};
+
+const demoJourneyStops: Stop[] = [
+  {
+    id: '1',
+    locationName: 'London',
+    expectedTime: '10:00',
+    actualOrEstimatedTime: '10:05',
+    status: 'LATE',
+  },
+  {
+    id: '2',
+    locationName: 'Sheffield',
+    expectedTime: '11:30',
+    actualOrEstimatedTime: '11:28',
+    status: 'ON_TIME',
+  },
+];
 
 // configs
 const UK_CENTER: [number, number] = [54.5, -2.5];
