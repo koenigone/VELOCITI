@@ -80,7 +80,7 @@ const TiplocCanvasLayer = () => {
 };
 
 // ---------------- ROUTE LAYER ----------------
-const RouteLayer = () => {
+    const RouteLayer = ({ selectedTrain }: { selectedTrain: any | null }) => {
     const map = useMap();
     const [schedule, setSchedule] = useState<string[]>([]);
 
@@ -222,7 +222,11 @@ const MapControls = ({ currentLayer, onLayerChange }: any) => {
 };
 
 // ---------------- MAIN MAP ----------------
-const MapArea = () => {
+type MapAreaProps = {
+  selectedTrain: any | null;
+};
+
+const MapArea = ({ selectedTrain }: MapAreaProps) => {
     const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
 
     return (

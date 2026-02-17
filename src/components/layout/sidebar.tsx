@@ -1,92 +1,96 @@
-import { Box, VStack, Input, Text } from '@chakra-ui/react';
-// import type { Stop } from '../../App';
+import { Box, VStack, Input, Text, Button } from '@chakra-ui/react';
+import { useState } from 'react';
+import type { Train } from '../../App';
 
-// type SidebarProps = {
-//   stops: Stop[] | null;
-// };
+type SidebarProps = {
+  trains: Train[];
+  setTrains: (trains: Train[]) => void;
+  onSelectTrain: (train: Train) => void;
+};
 
-const Sidebar = () => {
-  // const hasStops = !!stops && stops.length > 0;
+const Sidebar = ({ trains, setTrains, onSelectTrain }: SidebarProps) => {
+  const [searchValue, setSearchValue] = useState('');
+
+  const API_KEY = import.meta.env.VITE_VELOCITI_API_KEY;
+
+  const handleSearch = async () => {
+    if (!searchValue) return;
+
+    const now = new Date();
+    const startRaw = now.toISOString().slice(0, 19).replace('T', ' ');
+    const endDate = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    const endRaw = endDate.toISOString().slice(0, 19).replace('T', ' ');
+
+    const start = encodeURIComponent(startRaw);
+    const end = encodeURIComponent(endRaw);
+
+    const url = `https://traindata-stag-api.railsmart.io/api/trains/tiploc/${searchValue}/${start}/${end}`;
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'X-ApiKey': API_KEY
+        }
+      });
+
+      if (!response.ok) {
+        console.error("API error:", response.status);
+        return;
+      }
+
+      const data = await response.json();
+      setTrains(data);
+    } catch (err) {
+      console.error('API Error:', err);
+    }
+  };
 
   return (
     <Box h="full" display="flex" flexDirection="column">
-      {/* sidebar header */}
-      <Box p="4" borderBottomWidth="1px" borderColor="gray.200">
-        <Text
-          fontSize="xs"
-          fontWeight="bold"
-          color="gray.500"
-          letterSpacing="wider"
-          mb="2"
-        >
+      <Box p="4" borderBottomWidth="1px">
+        <Text fontSize="xs" fontWeight="bold" mb="2">
           TRAIN SEARCH
         </Text>
+
         <Input
-          placeholder="Find station"
+          placeholder="Enter TIPLOC (e.g. SHEFFLD)"
           size="sm"
-          borderRadius="md"
-          focusBorderColor="blue.900"
+          value={searchValue}
+          onChange={(e) => setSearchValue(e.target.value.toUpperCase())}
+          mb="2"
         />
+
+        <Button size="sm" colorScheme="blue" onClick={handleSearch}>
+          Search
+        </Button>
       </Box>
 
-      <VStack
-        flex="1"
-        overflowY="auto"
-        p="4"
-        spacing="4"
-        align="stretch"
-      >
-        {/* {hasStops && (
-          <Box>
-            <Text
-              fontSize="xs"
-              fontWeight="bold"
-              color="gray.500"
-              mb="2"
-            >
-              SCHEDULE
+      <VStack flex="1" overflowY="auto" p="4" align="stretch">
+        {trains.map((train) => (
+          <Box
+            key={train.trainId}
+            p="2"
+            borderWidth="1px"
+            borderRadius="md"
+            cursor="pointer"
+            _hover={{ bg: 'gray.50' }}
+            onClick={() => onSelectTrain(train)}
+          >
+            <Text fontWeight="bold">{train.originLocation}</Text>
+            <Text fontSize="sm">
+              → {train.destinationLocation}
             </Text>
-
-            {stops!.map((stop) => {
-              const isLate = stop.status === 'LATE';
-              const color = isLate ? 'red.500' : 'green.500';
-
-              return (
-                <Flex
-                  key={stop.id}
-                  justify="space-between"
-                  align="center"
-                  borderBottomWidth="1px"
-                  borderColor="gray.100"
-                  py="2"
-                >
-                  <Box>
-                    <Text fontWeight="semibold">
-                      {stop.locationName}
-                    </Text>
-
-                    <Text fontSize="xs" color="gray.500">
-                      Expected: {stop.expectedTime}
-                    </Text>
-                  </Box>
-
-                  <Box textAlign="right">
-                    <Text fontSize="xs" color="gray.500">
-                      Actual / Est
-                    </Text>
-
-                    <Text fontWeight="bold" color={color}>
-                      {stop.actualOrEstimatedTime}
-                    </Text>
-                  </Box>
-                </Flex>
-              );
-            })}
+            <Text fontSize="xs" color="gray.500">
+              Dep: {train.scheduledDeparture}
+            </Text>
           </Box>
-        )} */}
+        ))}
       </VStack>
     </Box>
   );
 };
 
 export default Sidebar;
+
+
+
