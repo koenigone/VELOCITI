@@ -1,52 +1,20 @@
 import type { Stop } from '../../App';
+
 import 'leaflet/dist/leaflet.css';
+import { useState, useEffect } from 'react';
 import { Box, Button, Menu, MenuButton, MenuList, MenuItem } from '@chakra-ui/react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import { useState } from 'react';
+import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { FaLayerGroup } from "react-icons/fa";
+import { MdOutlineZoomInMap } from "react-icons/md";
+import L from 'leaflet';
+import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
+import type { TiplocData } from '../../types';
 
-import { FaLayerGroup } from 'react-icons/fa';
-import { MdOutlineZoomInMap } from 'react-icons/md';
 
-// available map layers
-const MAP_LAYERS = {
-  standard: {
-    name: 'Standard',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-  },
-  openStreet: {
-    name: 'Open Street',
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  },
-  worldStreetMap: {
-    name: 'World Street Map',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-    attribution:
-      'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012',
-  },
-  satellite: {
-    name: 'Satellite',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution:
-      'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-  },
-  dark: {
-    name: 'Dark Mode',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-  },
-};
-
-// 1) Props: parent can pass a function to receive stops for a journey
 type MapAreaProps = {
   onJourneyClick?: (stops: Stop[]) => void;
 };
 
-// 2) Temporary fake journey data for testing
 const demoJourneyStops: Stop[] = [
   {
     id: '1',
@@ -64,130 +32,195 @@ const demoJourneyStops: Stop[] = [
   },
 ];
 
-// default map and zoom center (center of UK)
+// configs
 const UK_CENTER: [number, number] = [54.5, -2.5];
-const DEFAULT_ZOOM = 7;
+const DEFAULT_ZOOM = 6;
+const tiplocs = (tiplocDataRaw as any).Tiplocs as TiplocData[];
 
-const MapControls = ({ onReset, currentLayer, onLayerChange }: any) => {
-  return (
-    <Box
-      position="absolute"
-      top="4"
-      right="4"
-      zIndex={1000}
-      display="flex"
-      flexDirection="column"
-      gap={2}
-    >
-      {/* RESET BUTTON */}
-      <Button
-        size="sm"
-        bg="white"
-        color="gray.700"
-        border="1px"
-        borderColor="gray.200"
-        shadow="md"
-        _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
-        onClick={onReset}
-        leftIcon={<MdOutlineZoomInMap color="#3182ce" />}
-        justifyContent="flex-start"
-        minW="150px"
-      >
-        Reset Map
-      </Button>
+// available map layers
+const MAP_LAYERS = {
+    standard: {
+        name: "Standard",
+        url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+        attribution: '&copy; OpenStreetMap &copy; CARTO'
+    },
+    openStreet: {
+        name: "Open Street",
+        url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        attribution: '&copy; OpenStreetMap'
+    },
+    satellite: {
+        name: "Satellite",
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attribution: 'Tiles &copy; Esri'
+    },
+    dark: {
+        name: "Dark Mode",
+        url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        attribution: '&copy; OpenStreetMap &copy; CARTO'
+    },
+};
 
-      {/* LAYER MENU */}
-      <Menu>
-        <MenuButton
-          as={Button}
-          size="sm"
-          bg="white"
-          color="gray.700"
-          border="1px"
-          borderColor="gray.200"
-          shadow="md"
-          _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
-          leftIcon={<FaLayerGroup color="#3182ce" />}
-          justifyContent="flex-start"
-          minW="150px"
-          textAlign="left"
+// canvas layer - drawing tiplocs as icons on canvas for better performance with many points
+const TiplocCanvasLayer = () => {
+    const map = useMap();
+
+    useEffect(() => {
+        if (!map) return;
+
+        // create a custom canvas renderer for better performance with many markers
+        const myRenderer = L.canvas({ padding: 0.5 });
+
+        // loop through all 16k tiplocs
+        const markers = tiplocs.map((t) => {
+            if (!t.Latitude || !t.Longitude) return null;
+
+            // create custom circle markers for tiplocs (could be changed later)
+            const marker = L.circleMarker([t.Latitude, t.Longitude], {
+                renderer: myRenderer,
+                radius: 4,
+                color: '#3388ff',
+                fillColor: '#3388ff',
+                fillOpacity: 0.8,
+                weight: 1
+            });
+
+            // marker popup content
+            marker.bindPopup(`
+                <div style="font-family: sans-serif;">
+                    <h3 style="margin:0 0 5px;">${t.Name}</h3>
+                    <b>TIPLOC:</b> ${t.Tiploc}<br/>
+                    ${t.Details.CRS ? `<b>CRS:</b> ${t.Details.CRS}` : ''}
+                </div>
+            `);
+
+            return marker;
+        }).filter((m): m is L.CircleMarker => m !== null); // filter out any nulls from missing lat/lon
+
+        const layerGroup = L.featureGroup(markers).addTo(map);
+
+        // clean up on unmount
+        return () => {
+            layerGroup.remove(); // remove the entire layer group (and all markers) from the map
+        };
+    }, [map]);
+
+    return null;
+};
+
+// map controls section
+const MapControls = ({ currentLayer, onLayerChange }: any) => {
+    const map = useMap();
+
+    const handleReset = () => {
+        map.setView(UK_CENTER, DEFAULT_ZOOM, { animate: true });
+    };
+
+    // custom button styles
+    const glassButtonStyle = {
+        bg: "whiteAlpha.800",
+        backdropFilter: "blur(3px)",
+        color: "gray.700",
+        shadow: "lg",
+        border: "1px solid",
+        borderColor: "whiteAlpha.400",
+        _hover: { bg: "whiteAlpha.900" },
+        _active: { bg: "white" },
+        size: "sm",
+        w: "160px",
+        justifyContent: "flex-start",
+        iconSpacing: 3,
+    };
+
+    return (
+        <Box
+            position="absolute"
+            top="4"
+            right="4"
+            zIndex={1000}
+            display="flex"
+            flexDirection="column"
+            gap={3}
         >
-          {currentLayer.name}
-        </MenuButton>
-
-        <MenuList zIndex={1001} fontSize="sm" shadow="lg">
-          {Object.values(MAP_LAYERS).map((layer) => (
-            <MenuItem
-              key={layer.name}
-              onClick={() => onLayerChange(layer)}
-              fontWeight={currentLayer.name === layer.name ? 'bold' : 'normal'}
-              color={currentLayer.name === layer.name ? 'blue.600' : 'gray.700'}
+            {/* RESET BUTTON */}
+            <Button
+                {...glassButtonStyle}
+                onClick={handleReset}
+                leftIcon={<MdOutlineZoomInMap fontSize="1.1rem" color="#3182ce" />}
             >
-              {layer.name}
-            </MenuItem>
-          ))}
-        </MenuList>
-      </Menu>
-    </Box>
-  );
+                Reset Map
+            </Button>
+
+            {/* LAYER MENU */}
+            <Menu matchWidth>
+                <MenuButton
+                    as={Button}
+                    {...glassButtonStyle}
+                    leftIcon={<FaLayerGroup fontSize="1rem" color="#3182ce" />}
+                    textAlign="left"
+                >
+                    <Box as="span" isTruncated>
+                        {currentLayer.name}
+                    </Box>
+                </MenuButton>
+
+                <MenuList
+                    zIndex={1001}
+                    fontSize="sm"
+                    shadow="xl"
+                    bg="whiteAlpha.900"
+                    backdropFilter="blur(8px)"
+                    border="1px solid"
+                    borderColor="gray.100"
+                    p={1}
+                >
+                    {Object.values(MAP_LAYERS).map((layer) => (
+                        <MenuItem
+                            key={layer.name}
+                            onClick={() => onLayerChange(layer)}
+                            fontWeight={currentLayer.name === layer.name ? "600" : "normal"}
+                            color={currentLayer.name === layer.name ? "blue.600" : "gray.600"}
+                            borderRadius="md"
+                            _hover={{ bg: "blue.50" }}
+                        >
+                            {layer.name}
+                        </MenuItem>
+                    ))}
+                </MenuList>
+            </Menu>
+        </Box>
+    );
 };
 
-// handle map events and expose a reset function to parent via callback
-const MapEvents = ({ onResetRef }: { onResetRef: (fn: () => void) => void }) => {
-  const map = useMap();
+// main map component
+const MapArea = () => {
+    const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
 
-  if (onResetRef) {
-    onResetRef(() => {
-      map.setView(UK_CENTER, DEFAULT_ZOOM, { animate: true });
-    });
-  }
-  return null;
-};
+    return (
+        <Box w="full" h="full" position="relative" id="map-container">
+            <MapContainer
+                center={UK_CENTER}
+                zoom={DEFAULT_ZOOM}
+                style={{ height: "100%", width: "100%" }}
+                scrollWheelZoom={true}
+                zoomControl={false}
+                preferCanvas={true}
+            >
+                <MapControls
+                    currentLayer={activeLayer}
+                    onLayerChange={setActiveLayer}
+                />
 
-// 3) MapArea now accepts onJourneyClick from App
-const MapArea = ({ onJourneyClick }: MapAreaProps) => {
-  const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
-  const [resetMapFn, setResetMapFn] = useState<(() => void) | null>(null);
+                <TileLayer
+                    key={activeLayer.name}
+                    attribution={activeLayer.attribution}
+                    url={activeLayer.url}
+                />
 
-  return (
-    <Box w="full" h="full" position="relative" id="map-container">
-      {/* controls overlaid on top of the map */}
-      <MapControls
-        onReset={() => resetMapFn?.()}
-        currentLayer={activeLayer}
-        onLayerChange={setActiveLayer}
-      />
-
-      <MapContainer
-        center={UK_CENTER}
-        zoom={DEFAULT_ZOOM}
-        style={{ height: '100%', width: '100%' }}
-        scrollWheelZoom={true}
-        zoomControl={false}
-      >
-        <MapEvents onResetRef={setResetMapFn} />
-        <TileLayer
-          key={activeLayer.name}
-          attribution={activeLayer.attribution}
-          url={activeLayer.url}
-        />
-
-        {/* 4) Example marker that triggers onJourneyClick with demo stops */}
-        <Marker
-          position={[51.505, -0.09]}
-          eventHandlers={{
-            click: () => {
-              if (onJourneyClick) {
-                onJourneyClick(demoJourneyStops);
-              }
-            },
-          }}
-        >
-          <Popup>Velocity London</Popup>
-        </Marker>
-      </MapContainer>
-    </Box>
-  );
+                <TiplocCanvasLayer />
+            </MapContainer>
+        </Box>
+    );
 };
 
 export default MapArea;
