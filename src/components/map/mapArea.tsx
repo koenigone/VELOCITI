@@ -37,7 +37,7 @@ const MAP_LAYERS = {
     },
 };
 
-// ---------------- CANVAS LAYER (ALL STOPS) ----------------
+// ---------------- CANVAS LAYER ----------------
 const TiplocCanvasLayer = () => {
     const map = useMap();
 
@@ -49,20 +49,24 @@ const TiplocCanvasLayer = () => {
         const markers = tiplocs.map((t) => {
             if (!t.Latitude || !t.Longitude) return null;
 
-            return L.circleMarker([t.Latitude, t.Longitude], {
+            const marker = L.circleMarker([t.Latitude, t.Longitude], {
                 renderer,
                 radius: 4,
                 color: '#3388ff',
                 fillColor: '#3388ff',
                 fillOpacity: 0.8,
                 weight: 1
-            }).bindPopup(`
+            });
+
+            marker.bindPopup(`
                 <div style="font-family: sans-serif;">
                     <h3 style="margin:0 0 5px;">${t.Name}</h3>
                     <b>TIPLOC:</b> ${t.Tiploc}<br/>
                     ${t.Details.CRS ? `<b>CRS:</b> ${t.Details.CRS}` : ''}
                 </div>
             `);
+
+            return marker;
         }).filter((m): m is L.CircleMarker => m !== null);
 
         const layerGroup = L.featureGroup(markers).addTo(map);
@@ -80,17 +84,15 @@ const RouteLayer = () => {
     const map = useMap();
     const [schedule, setSchedule] = useState<string[]>([]);
 
-    // Simulate schedule retrieval
     useEffect(() => {
         const mockSchedule = [
             "ABRDEEN",
             "ABER",
             "ABINGTN"
         ];
-
         setTimeout(() => {
             setSchedule(mockSchedule);
-        }, 500); // simulate retrieval delay
+        }, 500);
     }, []);
 
     const scheduledStations = schedule
@@ -101,7 +103,6 @@ const RouteLayer = () => {
         station => [station.Latitude, station.Longitude]
     );
 
-    // Auto-fit map to route bounds
     useEffect(() => {
         if (routePositions.length > 1) {
             const bounds = L.latLngBounds(routePositions);
@@ -113,7 +114,6 @@ const RouteLayer = () => {
 
     return (
         <>
-            {/* Highlight scheduled stops */}
             {scheduledStations.map((station, index) => (
                 <CircleMarker
                     key={index}
@@ -128,7 +128,6 @@ const RouteLayer = () => {
                 />
             ))}
 
-            {/* Route Polyline */}
             <Polyline
                 positions={routePositions}
                 pathOptions={{
@@ -165,7 +164,15 @@ const MapControls = ({ currentLayer, onLayerChange }: any) => {
     };
 
     return (
-        <Box position="absolute" top="4" right="4" zIndex={1000} display="flex" flexDirection="column" gap={3}>
+        <Box
+            position="absolute"
+            top="4"
+            right="4"
+            zIndex={1000}
+            display="flex"
+            flexDirection="column"
+            gap={3}
+        >
             <Button
                 {...glassButtonStyle}
                 onClick={handleReset}
@@ -179,13 +186,32 @@ const MapControls = ({ currentLayer, onLayerChange }: any) => {
                     as={Button}
                     {...glassButtonStyle}
                     leftIcon={<FaLayerGroup fontSize="1rem" color="#3182ce" />}
+                    textAlign="left"
                 >
-                    {currentLayer.name}
+                    <Box as="span" isTruncated>
+                        {currentLayer.name}
+                    </Box>
                 </MenuButton>
 
-                <MenuList>
+                <MenuList
+                    zIndex={1001}
+                    fontSize="sm"
+                    shadow="xl"
+                    bg="whiteAlpha.900"
+                    backdropFilter="blur(8px)"
+                    border="1px solid"
+                    borderColor="gray.100"
+                    p={1}
+                >
                     {Object.values(MAP_LAYERS).map((layer) => (
-                        <MenuItem key={layer.name} onClick={() => onLayerChange(layer)}>
+                        <MenuItem
+                            key={layer.name}
+                            onClick={() => onLayerChange(layer)}
+                            fontWeight={currentLayer.name === layer.name ? "600" : "normal"}
+                            color={currentLayer.name === layer.name ? "blue.600" : "gray.600"}
+                            borderRadius="md"
+                            _hover={{ bg: "blue.50" }}
+                        >
                             {layer.name}
                         </MenuItem>
                     ))}
@@ -200,7 +226,7 @@ const MapArea = () => {
     const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
 
     return (
-        <Box w="full" h="full" position="relative">
+        <Box w="full" h="full" position="relative" id="map-container">
             <MapContainer
                 center={UK_CENTER}
                 zoom={DEFAULT_ZOOM}
@@ -209,7 +235,10 @@ const MapArea = () => {
                 zoomControl={false}
                 preferCanvas={true}
             >
-                <MapControls currentLayer={activeLayer} onLayerChange={setActiveLayer} />
+                <MapControls
+                    currentLayer={activeLayer}
+                    onLayerChange={setActiveLayer}
+                />
 
                 <TileLayer
                     key={activeLayer.name}
@@ -225,10 +254,3 @@ const MapArea = () => {
 };
 
 export default MapArea;
-
-
-
-
-
-
-
