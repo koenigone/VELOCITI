@@ -1,96 +1,138 @@
-import { Box, VStack, Input, Text, Button } from '@chakra-ui/react';
 import { useState } from 'react';
-import type { Train } from '../../App';
+import {
+  Box, VStack, Input, Text, Button, useToast,
+  Card, CardBody, Badge, Flex, Spinner
+} from '@chakra-ui/react';
+import { FaSearch } from 'react-icons/fa';
+import { trainApi } from '../../api/api';
+import type { Train } from '../../types';
 
-type SidebarProps = {
-  trains: Train[];
-  setTrains: (trains: Train[]) => void;
-  onSelectTrain: (train: Train) => void;
-};
+interface SidebarProps {
+  onLocationSelect: (lat: number, lng: number) => void;
+  onTrainSelect: (train: Train) => void;
+}
 
-const Sidebar = ({ trains, setTrains, onSelectTrain }: SidebarProps) => {
-  const [searchValue, setSearchValue] = useState('');
+const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [trains, setTrains] = useState<Train[]>([]);
+  const [selectedTrainId, setSelectedTrainId] = useState<string | null>(null);
+  const toast = useToast();
 
-  const API_KEY = import.meta.env.VITE_VELOCITI_API_KEY;
-
+  // handle searching for a station and fetching its schedule
   const handleSearch = async () => {
-    if (!searchValue) return;
+    if (!searchTerm.trim()) return;
 
-    const now = new Date();
-    const startRaw = now.toISOString().slice(0, 19).replace('T', ' ');
-    const endDate = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-    const endRaw = endDate.toISOString().slice(0, 19).replace('T', ' ');
-
-    const start = encodeURIComponent(startRaw);
-    const end = encodeURIComponent(endRaw);
-
-    const url = `https://traindata-stag-api.railsmart.io/api/trains/tiploc/${searchValue}/${start}/${end}`;
+    setIsLoading(true);
+    setTrains([]);
+    setSelectedTrainId(null);
 
     try {
-      const response = await fetch(url, {
-        headers: {
-          'X-ApiKey': API_KEY
-        }
+      // get searched tiploc's location and move map there
+      const location = await trainApi.getLocation(searchTerm);
+      onLocationSelect(location.latitude, location.longitude);
+
+      // get schedule for searched tiploc and show in sidebar
+      const schedule = await trainApi.getSchedule(searchTerm);
+      setTrains(schedule);
+
+    } catch (error: any) { // handle case where no trains are found but location is valid
+      toast({
+        title: "Search failed",
+        description: error.message || "Could not find station or schedule.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
       });
-
-      if (!response.ok) {
-        console.error("API error:", response.status);
-        return;
-      }
-
-      const data = await response.json();
-      setTrains(data);
-    } catch (err) {
-      console.error('API Error:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // handle clicking a train card - set selected and notify App
+  const handleTrainClick = (train: Train) => {
+    setSelectedTrainId(train.trainId);
+    onTrainSelect(train);
+  };
+
+  // allow pressing enter as alternative to clicking search button
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSearch();
+  };
+
   return (
-    <Box h="full" display="flex" flexDirection="column">
-      <Box p="4" borderBottomWidth="1px">
-        <Text fontSize="xs" fontWeight="bold" mb="2">
+    <Box h="full" display="flex" flexDirection="column" bg="white" borderRight="1px" borderColor="gray.200">
+      {/* Sidebar Header */}
+      <Box p="4" borderBottomWidth="1px" borderColor="gray.200" bg="white">
+        <Text fontSize="xs" fontWeight="bold" color="gray.500" letterSpacing="wider" mb="2">
           TRAIN SEARCH
         </Text>
-
-        <Input
-          placeholder="Enter TIPLOC (e.g. SHEFFLD)"
-          size="sm"
-          value={searchValue}
-          onChange={(e) => setSearchValue(e.target.value.toUpperCase())}
-          mb="2"
-        />
-
-        <Button size="sm" colorScheme="blue" onClick={handleSearch}>
-          Search
-        </Button>
+        <Flex gap={2}>
+          <Input
+            placeholder="Enter TIPLOC (e.g. SHEFFLD)"
+            size="sm"
+            borderRadius="md"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={handleKeyDown}
+            focusBorderColor="blue.900"
+          />
+          <Button
+            size="sm"
+            colorScheme="blue"
+            onClick={handleSearch}
+            isLoading={isLoading}
+            disabled={!searchTerm}
+          >
+            <FaSearch />
+          </Button>
+        </Flex>
       </Box>
 
-      <VStack flex="1" overflowY="auto" p="4" align="stretch">
-        {trains.map((train) => (
-          <Box
+      {/* Results List */}
+      <VStack flex="1" overflowY="auto" p="2" spacing="2" align="stretch" bg="gray.50">
+        {isLoading && (
+          <Flex justify="center" py={8}>
+            <Spinner color="blue.500" />
+          </Flex>
+        )}
+
+        {!isLoading && trains.map((train) => (
+          <Card
             key={train.trainId}
-            p="2"
-            borderWidth="1px"
-            borderRadius="md"
+            size="sm"
             cursor="pointer"
-            _hover={{ bg: 'gray.50' }}
-            onClick={() => onSelectTrain(train)}
+            onClick={() => handleTrainClick(train)}
+            bg={selectedTrainId === train.trainId ? "blue.50" : "white"}
+            borderColor={selectedTrainId === train.trainId ? "blue.400" : "gray.200"}
+            borderWidth="1px"
+            _hover={{ shadow: "md", borderColor: "blue.200" }}
+            transition="all 0.2s"
           >
-            <Text fontWeight="bold">{train.originLocation}</Text>
-            <Text fontSize="sm">
-              → {train.destinationLocation}
-            </Text>
-            <Text fontSize="xs" color="gray.500">
-              Dep: {train.scheduledDeparture}
-            </Text>
-          </Box>
+            <CardBody py={2} px={3}>
+              <Flex justify="space-between" align="center" mb={1}>
+                <Badge colorScheme="blue" fontSize="0.7em" variant="solid">
+                  {train.headCode}
+                </Badge>
+                <Text fontSize="xs" color="gray.500">
+                  {new Date(train.scheduledDeparture).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </Flex>
+              <Text fontSize="sm" fontWeight="semibold" isTruncated title={train.destinationLocation}>
+                {train.destinationLocation}
+              </Text>
+            </CardBody>
+          </Card>
         ))}
+
+        {!isLoading && trains.length === 0 && searchTerm && (
+          <Text p={4} fontSize="xs" color="gray.500" textAlign="center">
+            {trains.length === 0 ? "No trains found." : "Search for a station to see trains."}
+          </Text>
+        )}
       </VStack>
     </Box>
   );
 };
 
 export default Sidebar;
-
-
-
