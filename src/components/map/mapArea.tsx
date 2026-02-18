@@ -185,37 +185,79 @@ interface MapAreaProps {
 }
 
 const MapArea = ({ targetView, selectedTrain }: MapAreaProps) => {
-  const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
+    const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
 
-  return (
-    <Box w="full" h="full" position="relative" id="map-container">
-      <MapContainer
-        center={UK_CENTER}
-        zoom={DEFAULT_ZOOM}
-        style={{ height: "100%", width: "100%" }}
-        scrollWheelZoom
-        zoomControl={false}
-        preferCanvas
-      >
-        <MapController
-          targetView={targetView || null}
-          selectedTrain={selectedTrain || null}
-        />
+    //isLoading essentially controls when spinner shows
+    const [isLoading, setIsLoading] = useState(true); //starts as true when application loads
+    //error on the other hand controls when alert shows
+    const [error, setError] = useState<string | null>(null); 
 
-        <TileLayer
-          key={activeLayer.name}
-          attribution={activeLayer.attribution}
-          url={activeLayer.url}
-        />
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            // change this to simulate failure
+            const shouldFail = false;
 
-        <TiplocCanvasLayer />
+            if (shouldFail) {
+                setError("Sorry, unable to load rail data... Please try again!");
+            }
 
-        <RouteRenderer selectedTrain={selectedTrain || null} />
-      </MapContainer>
-    </Box>
-  );
+            setIsLoading(false);
+        }, 1200); // essentially waits 1.2 seconds before ending loading
+
+        return () => clearTimeout(timer); //clears up to prevents timer running if component unmounts
+    }, []);
+
+    //the visual of isLoading
+    if (isLoading) {
+        return (
+            <Box w="full" h="full" position="relative" id="map-container" display="flex" alignItems="center" justifyContent="center">
+                <Spinner size="xl" />
+            </Box>
+        );
+    }
+
+    if (error) {
+        return (
+            <Box w="full" h="full" position="relative" id="map-container" p="6">
+                <Alert status="error">
+                    <AlertIcon />
+                    {error}
+                </Alert>
+            </Box>
+        );
+    }
+
+    return (
+        <Box w="full" h="full" position="relative" id="map-container">
+            <MapContainer
+                center={UK_CENTER}
+                zoom={DEFAULT_ZOOM}
+                style={{ height: "100%", width: "100%" }}
+                scrollWheelZoom={true}
+                zoomControl={false}
+                preferCanvas={true}
+            >
+                <MapController targetView={targetView || null} selectedTrain={selectedTrain || null} />
+
+                <MapControls
+                    currentLayer={activeLayer}
+                    onLayerChange={setActiveLayer}
+                />
+
+                <TileLayer
+                    key={activeLayer.name}
+                    attribution={activeLayer.attribution}
+                    url={activeLayer.url}
+                    eventHandlers={{
+                        tileerror: () => {
+                            setError("Sorry, unable to load rail data... Please try again!");
+                        },
+                    }}
+                />
+                <TiplocCanvasLayer />
+            </MapContainer>
+        </Box>
+    );
 };
 
 export default MapArea;
-
-
