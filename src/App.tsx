@@ -2,31 +2,39 @@ import { useState } from 'react';
 import Layout from './layout';
 import Sidebar from './components/layout/sidebar';
 import MapArea from './components/map/mapArea';
-
-// 1) Describe one stop in the schedule
-export type StopStatus = 'LATE' | 'ON_TIME' | 'EARLY';
-
-export type Stop = {
-  id: string;
-  locationName: string;
-  expectedTime: string;
-  actualOrEstimatedTime: string;
-  status: StopStatus;
-};
+import type { MapTarget } from './types';
 
 function App() {
-  // 2) Remember which stops belong to the currently selected journey
-  const [selectedStops, setSelectedStops] = useState<Stop[] | null>(null);
+  const [mapTarget, setMapTarget] = useState<MapTarget | null>(null);
+  const [selectedTrain, setSelectedTrain] = useState<any | null>(null);
+
+  const handleLocationSelect = (lat: number, lng: number) => {
+    setMapTarget({ lat, lng, zoom: 14 });
+    setSelectedTrain(null);
+  };
+
+  const handleTrainSelect = (train: any) => {
+  console.log("TRAIN SELECTED:", train);
+  setSelectedTrain(train);
+};
 
   return (
-  <Layout
-    sideContent={<Sidebar stops={selectedStops} />}
-    mapContent={
-      <MapArea onJourneyClick={(stops: Stop[]) => setSelectedStops(stops)} />
-    }
-  />
-);
-
+    <Layout
+      sideContent={
+        <Sidebar 
+          onLocationSelect={handleLocationSelect} 
+          onTrainSelect={handleTrainSelect}
+        />
+      }
+      mapContent={
+        <MapArea 
+          targetView={mapTarget}
+          selectedTrain={selectedTrain}
+        />
+      }
+    />
+  );
 }
 
 export default App;
+

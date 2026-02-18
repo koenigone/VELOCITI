@@ -1,99 +1,134 @@
-import { Box, VStack, Input, Text, Flex } from '@chakra-ui/react';
-import type { Stop } from '../../App';
+import { useState } from 'react';
+import {
+  Box, VStack, Input, Text, Button, useToast,
+  Card, CardBody, Badge, Flex, Spinner
+} from '@chakra-ui/react';
+import { FaSearch } from 'react-icons/fa';
+import { trainApi } from '../../api/api';
+import type { Train } from '../../types';
 
-type SidebarProps = {
-  // The list of stops for the currently selected journey
-  stops: Stop[] | null;
-};
+interface SidebarProps {
+  onLocationSelect: (lat: number, lng: number) => void;
+  onTrainSelect: (train: Train) => void;
+}
 
-const Sidebar = ({ stops }: SidebarProps) => {
-  // true if we actually have stops to show
-  const hasStops = !!stops && stops.length > 0;
+const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [trains, setTrains] = useState<Train[]>([]);
+  const [selectedTrainId, setSelectedTrainId] = useState<string | null>(null);
+  const toast = useToast();
+
+  // handle searching for a station and fetching its schedule
+  const handleSearch = async () => {
+    if (!searchTerm.trim()) return;
+
+    setIsLoading(true);
+    setTrains([]);
+    setSelectedTrainId(null);
+
+    try {
+      // get searched tiploc's location and move map there
+      const location = await trainApi.getLocation(searchTerm);
+      onLocationSelect(location.latitude, location.longitude);
+
+      // get schedule for searched tiploc and show in sidebar
+      const schedule = await trainApi.getSchedule(searchTerm);
+      setTrains(schedule);
+
+    } catch (error: any) { // handle case where no trains are found but location is valid
+      toast({
+        title: "Search failed",
+        description: error.message || "Could not find station or schedule.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // handle clicking a train card - set selected and notify App
+  const handleTrainClick = (train: Train) => {
+    setSelectedTrainId(train.trainId);
+    onTrainSelect(train);
+  };
+
+  // allow pressing enter as alternative to clicking search button
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSearch();
+  };
 
   return (
-    <Box h="full" display="flex" flexDirection="column">
-      {/* sidebar header */}
-      <Box p="4" borderBottomWidth="1px" borderColor="gray.200">
-        <Text
-          fontSize="xs"
-          fontWeight="bold"
-          color="gray.500"
-          letterSpacing="wider"
-          mb="2"
-        >
+    <Box h="full" display="flex" flexDirection="column" bg="white" borderRight="1px" borderColor="gray.200">
+      {/* Sidebar Header */}
+      <Box p="4" borderBottomWidth="1px" borderColor="gray.200" bg="white">
+        <Text fontSize="xs" fontWeight="bold" color="gray.500" letterSpacing="wider" mb="2">
           TRAIN SEARCH
         </Text>
-        <Input
-          placeholder="Find station"
-          size="sm"
-          borderRadius="md"
-          focusBorderColor="blue.900"
-        />
+        <Flex gap={2}>
+          <Input
+            placeholder="Enter TIPLOC (e.g. SHEFFLD)"
+            size="sm"
+            borderRadius="md"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={handleKeyDown}
+            focusBorderColor="blue.900"
+          />
+          <Button
+            size="sm"
+            colorScheme="blue"
+            onClick={handleSearch}
+            isLoading={isLoading}
+            disabled={!searchTerm}
+          >
+            <FaSearch />
+          </Button>
+        </Flex>
       </Box>
 
-      <VStack
-        flex="1"
-        overflowY="auto"
-        p="4"
-        spacing="4"
-        align="stretch"
-      >
-        {/* If no journey is selected, show hint text */}
-        {!hasStops && (
-          <Box textAlign="center" py="10" color="gray.500">
-            <Text fontSize="sm">Select a station to view schedule.</Text>
-          </Box>
+      {/* Results List */}
+      <VStack flex="1" overflowY="auto" p="2" spacing="2" align="stretch" bg="gray.50">
+        {isLoading && (
+          <Flex justify="center" py={8}>
+            <Spinner color="blue.500" />
+          </Flex>
         )}
 
-        {/* If we have stops, show schedule list */}
-        {hasStops && (
-          <Box>
-            <Text
-              fontSize="xs"
-              fontWeight="bold"
-              color="gray.500"
-              mb="2"
-            >
-              SCHEDULE
-            </Text>
+        {!isLoading && trains.map((train) => (
+          <Card
+            key={train.trainId}
+            size="sm"
+            cursor="pointer"
+            onClick={() => handleTrainClick(train)}
+            bg={selectedTrainId === train.trainId ? "blue.50" : "white"}
+            borderColor={selectedTrainId === train.trainId ? "blue.400" : "gray.200"}
+            borderWidth="1px"
+            _hover={{ shadow: "md", borderColor: "blue.200" }}
+            transition="all 0.2s"
+          >
+            <CardBody py={2} px={3}>
+              <Flex justify="space-between" align="center" mb={1}>
+                <Badge colorScheme="blue" fontSize="0.7em" variant="solid">
+                  {train.headCode}
+                </Badge>
+                <Text fontSize="xs" color="gray.500">
+                  {new Date(train.scheduledDeparture).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </Flex>
+              <Text fontSize="sm" fontWeight="semibold" isTruncated title={train.destinationLocation}>
+                {train.destinationLocation}
+              </Text>
+            </CardBody>
+          </Card>
+        ))}
 
-            {stops!.map((stop) => {
-              const isLate = stop.status === 'LATE';
-              const color = isLate ? 'red.500' : 'green.500';
-
-              return (
-                <Flex
-                  key={stop.id}
-                  justify="space-between"
-                  align="center"
-                  borderBottomWidth="1px"
-                  borderColor="gray.100"
-                  py="2"
-                >
-                  <Box>
-                    {/* Location Name */}
-                    <Text fontWeight="semibold">
-                      {stop.locationName}
-                    </Text>
-                    {/* Expected Time */}
-                    <Text fontSize="xs" color="gray.500">
-                      Expected: {stop.expectedTime}
-                    </Text>
-                  </Box>
-
-                  <Box textAlign="right">
-                    <Text fontSize="xs" color="gray.500">
-                      Actual / Est
-                    </Text>
-                    {/* Actual / Estimated Time, coloured */}
-                    <Text fontWeight="bold" color={color}>
-                      {stop.actualOrEstimatedTime}
-                    </Text>
-                  </Box>
-                </Flex>
-              );
-            })}
-          </Box>
+        {!isLoading && trains.length === 0 && searchTerm && (
+          <Text p={4} fontSize="xs" color="gray.500" textAlign="center">
+            {trains.length === 0 ? "No trains found." : "Search for a station to see trains."}
+          </Text>
         )}
       </VStack>
     </Box>
