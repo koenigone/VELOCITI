@@ -162,6 +162,46 @@ interface MapAreaProps {
 const MapArea = ({ targetView, selectedTrain }: MapAreaProps) => {
     const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
 
+    //isLoading essentially controls when spinner shows
+    const [isLoading, setIsLoading] = useState(true); //starts as true when application loads
+    //error on the other hand controls when alert shows
+    const [error, setError] = useState<string | null>(null); 
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            // change this to simulate failure
+            const shouldFail = false;
+
+            if (shouldFail) {
+                setError("Sorry, unable to load rail data... Please try again!");
+            }
+
+            setIsLoading(false);
+        }, 1200); // essentially waits 1.2 seconds before ending loading
+
+        return () => clearTimeout(timer); //clears up to prevents timer running if component unmounts
+    }, []);
+
+    //the visual of isLoading
+    if (isLoading) {
+        return (
+            <Box w="full" h="full" position="relative" id="map-container" display="flex" alignItems="center" justifyContent="center">
+                <Spinner size="xl" />
+            </Box>
+        );
+    }
+
+    if (error) {
+        return (
+            <Box w="full" h="full" position="relative" id="map-container" p="6">
+                <Alert status="error">
+                    <AlertIcon />
+                    {error}
+                </Alert>
+            </Box>
+        );
+    }
+
     return (
         <Box w="full" h="full" position="relative" id="map-container">
             <MapContainer
@@ -183,6 +223,11 @@ const MapArea = ({ targetView, selectedTrain }: MapAreaProps) => {
                     key={activeLayer.name}
                     attribution={activeLayer.attribution}
                     url={activeLayer.url}
+                    eventHandlers={{
+                        tileerror: () => {
+                            setError("Sorry, unable to load rail data... Please try again!");
+                        },
+                    }}
                 />
                 <TiplocCanvasLayer />
             </MapContainer>
