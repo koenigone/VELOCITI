@@ -22,7 +22,7 @@ export const trainApi = {
 
     const data = await response.json();
 
-    if (!data.tiplocsLocations || data.tiplocsLocations.length === 0) {
+    if (!data.tiplocsLocations?.length) {
       throw new Error("Location not found");
     }
 
@@ -34,7 +34,9 @@ export const trainApi = {
     const response = await fetch(`${API_BASE}/Tiploc/TiplocLocations`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ Tiplocs: tiplocs.map(t => t.toUpperCase()) })
+      body: JSON.stringify({
+        Tiplocs: [...new Set(tiplocs.map(t => t.toUpperCase()))]
+      })
     });
 
     if (!response.ok) throw new Error("Multi-location fetch failed");
@@ -73,18 +75,23 @@ export const trainApi = {
   },
 
   // ---------------- GET FULL TRAIN ----------------
-  getFullSchedule: async (trainId: string) => {
-    const response = await fetch(`${API_BASE}/trains/${trainId}`, {
+getFullSchedule: async (scheduleId: number) => {
+
+  const response = await fetch(
+    `${API_BASE}/trains/schedule/${scheduleId}`,
+    {
       method: 'GET',
       headers: getHeaders()
-    });
+    }
+  );
 
-    if (!response.ok) throw new Error("Full schedule fetch failed");
+  if (!response.ok) throw new Error("Full schedule fetch failed");
 
-    return await response.json();
-  }
+  return await response.json();
+}
 
 };
+
 
 
 

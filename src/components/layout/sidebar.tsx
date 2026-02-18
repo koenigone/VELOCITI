@@ -7,19 +7,29 @@ import { FaSearch } from 'react-icons/fa';
 import { trainApi } from '../../api/api';
 import type { Train } from '../../types';
 
-interface SidebarProps {
+interface SidebarProps 
+{
   onLocationSelect: (lat: number, lng: number) => void;
   onTrainSelect: (train: Train) => void;
+  selectedTrain: any | null;
+  routeStops: any[];
 }
 
-const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
+const Sidebar = 
+({
+  onLocationSelect,
+  onTrainSelect,
+  selectedTrain,
+  routeStops
+}: SidebarProps) => 
+{
+
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [trains, setTrains] = useState<Train[]>([]);
   const [selectedTrainId, setSelectedTrainId] = useState<string | null>(null);
   const toast = useToast();
 
-  // handle searching for a station and fetching its schedule
   const handleSearch = async () => {
     if (!searchTerm.trim()) return;
 
@@ -28,18 +38,16 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     setSelectedTrainId(null);
 
     try {
-      // get searched tiploc's location and move map there
       const location = await trainApi.getLocation(searchTerm);
       onLocationSelect(location.latitude, location.longitude);
 
-      // get schedule for searched tiploc and show in sidebar
       const schedule = await trainApi.getSchedule(searchTerm);
       setTrains(schedule);
 
-    } catch (error: any) { // handle case where no trains are found but location is valid
+    } catch (error: any) {
       toast({
         title: "Search failed",
-        description: error.message || "Could not find station or schedule.",
+        description: error.message || "Could not find station.",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -49,51 +57,49 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     }
   };
 
-  // handle clicking a train card - set selected and notify App
   const handleTrainClick = (train: Train) => {
     setSelectedTrainId(train.trainId);
     onTrainSelect(train);
   };
 
-  // allow pressing enter as alternative to clicking search button
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleSearch();
   };
 
   return (
     <Box h="full" display="flex" flexDirection="column" bg="white" borderRight="1px" borderColor="gray.200">
-      {/* Sidebar Header */}
-      <Box p="4" borderBottomWidth="1px" borderColor="gray.200" bg="white">
-        <Text fontSize="xs" fontWeight="bold" color="gray.500" letterSpacing="wider" mb="2">
+
+      {/* SEARCH */}
+      <Box p="4" borderBottomWidth="1px" borderColor="gray.200">
+        <Text fontSize="xs" fontWeight="bold" color="gray.500" mb="2">
           TRAIN SEARCH
         </Text>
+
         <Flex gap={2}>
           <Input
-            placeholder="Enter TIPLOC (e.g. SHEFFLD)"
+            placeholder="Enter TIPLOC"
             size="sm"
-            borderRadius="md"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={handleKeyDown}
-            focusBorderColor="blue.900"
           />
           <Button
             size="sm"
             colorScheme="blue"
             onClick={handleSearch}
             isLoading={isLoading}
-            disabled={!searchTerm}
           >
             <FaSearch />
           </Button>
         </Flex>
       </Box>
 
-      {/* Results List */}
-      <VStack flex="1" overflowY="auto" p="2" spacing="2" align="stretch" bg="gray.50">
+      {/* TRAIN RESULTS */}
+      <VStack flex="1" overflowY="auto" p="3" spacing="3" align="stretch" bg="gray.50">
+
         {isLoading && (
           <Flex justify="center" py={8}>
-            <Spinner color="blue.500" />
+            <Spinner />
           </Flex>
         )}
 
@@ -104,35 +110,53 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
             cursor="pointer"
             onClick={() => handleTrainClick(train)}
             bg={selectedTrainId === train.trainId ? "blue.50" : "white"}
-            borderColor={selectedTrainId === train.trainId ? "blue.400" : "gray.200"}
             borderWidth="1px"
-            _hover={{ shadow: "md", borderColor: "blue.200" }}
-            transition="all 0.2s"
           >
-            <CardBody py={2} px={3}>
-              <Flex justify="space-between" align="center" mb={1}>
-                <Badge colorScheme="blue" fontSize="0.7em" variant="solid">
-                  {train.headCode}
-                </Badge>
-                <Text fontSize="xs" color="gray.500">
-                  {new Date(train.scheduledDeparture).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            <CardBody py={2}>
+              <Flex justify="space-between">
+                <Badge colorScheme="blue">{train.headCode}</Badge>
+                <Text fontSize="xs">
+                  {new Date(train.scheduledDeparture).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
                 </Text>
               </Flex>
-              <Text fontSize="sm" fontWeight="semibold" isTruncated title={train.destinationLocation}>
-                {train.destinationLocation}
+              <Text fontWeight="semibold">
+                {train.originLocation} → {train.destinationLocation}
               </Text>
             </CardBody>
           </Card>
         ))}
 
-        {!isLoading && trains.length === 0 && searchTerm && (
-          <Text p={4} fontSize="xs" color="gray.500" textAlign="center">
-            {trains.length === 0 ? "No trains found." : "Search for a station to see trains."}
-          </Text>
+        {/* STOP DETAILS SECTION */}
+        {selectedTrain && routeStops.length > 0 && (
+          <Box mt="4">
+            <Text fontSize="xs" fontWeight="bold" color="gray.500" mb="2">
+              ROUTE STOPS
+            </Text>
+
+            {routeStops.map((stop, index) => (
+              <Box
+                key={index}
+                p="2"
+                borderBottomWidth="1px"
+                borderColor="gray.200"
+              >
+                <Text fontWeight="semibold">{stop.name}</Text>
+                <Text fontSize="xs" color="gray.500">
+                  {stop.type}
+                </Text>
+              </Box>
+            ))}
+          </Box>
         )}
+
       </VStack>
     </Box>
   );
 };
 
 export default Sidebar;
+
+

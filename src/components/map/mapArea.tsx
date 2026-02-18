@@ -1,61 +1,31 @@
 import 'leaflet/dist/leaflet.css';
 import { useState, useEffect } from 'react';
-import { Box, Button, Menu, MenuButton, MenuList, MenuItem } from '@chakra-ui/react';
+import { Box, Spinner, Alert, AlertIcon } from '@chakra-ui/react';
 import { MapContainer, TileLayer, useMap, Polyline, CircleMarker } from 'react-leaflet';
-import { trainApi } from '../../api/api';
-import { FaLayerGroup } from "react-icons/fa";
-import { MdOutlineZoomInMap } from "react-icons/md";
 import L from 'leaflet';
 import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
 import type { TiplocData, MapTarget } from '../../types';
 
-// ---------------- CONFIG ----------------
 const UK_CENTER: [number, number] = [54.5, -2.5];
 const DEFAULT_ZOOM = 6;
 const tiplocs = (tiplocDataRaw as any).Tiplocs as TiplocData[];
-
-// ---------------- MAP LAYERS ----------------
-const MAP_LAYERS = {
-  standard: {
-    name: "Standard",
-    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-    attribution: '&copy; OpenStreetMap &copy; CARTO'
-  },
-  openStreet: {
-    name: "Open Street",
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution: '&copy; OpenStreetMap'
-  },
-  satellite: {
-    name: "Satellite",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: 'Tiles &copy; Esri'
-  },
-  dark: {
-    name: "Dark Mode",
-    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    attribution: '&copy; OpenStreetMap &copy; CARTO'
-  },
-};
 
 // ---------------- MAP CONTROLLER ----------------
 const MapController = ({
   targetView,
   selectedTrain
 }: {
-  targetView: MapTarget | null,
-  selectedTrain: any | null
+  targetView: MapTarget | null;
+  selectedTrain: any | null;
 }) => {
   const map = useMap();
 
-  // Zoom to searched station
   useEffect(() => {
     if (targetView) {
       map.flyTo([targetView.lat, targetView.lng], targetView.zoom || 14);
     }
   }, [targetView, map]);
 
-  // Zoom to selected train origin
   useEffect(() => {
     if (!selectedTrain) return;
 
@@ -75,47 +45,76 @@ const MapController = ({
 };
 
 // ---------------- ROUTE RENDERER ----------------
-const RouteRenderer = ({ selectedTrain }: { selectedTrain: any | null }) => {
+const RouteRenderer = ({
+  selectedTrain,
+  setRouteStops
+}: {
+  selectedTrain: any | null;
+  setRouteStops: (stops: any[]) => void;
+}) => {
+
   const map = useMap();
   const [routePositions, setRoutePositions] = useState<[number, number][]>([]);
 
   useEffect(() => {
     if (!selectedTrain) {
       setRoutePositions([]);
+      setRouteStops([]);
       return;
     }
 
-    const fetchRoute = async () => {
-      try {
+    const origin = tiplocs.find(
+      t => t.Tiploc === selectedTrain.originTiploc
+    );
 
-        const origin = selectedTrain.originTiploc;
-        const destination = selectedTrain.destinationTiploc;
+    const destination = tiplocs.find(
+      t => t.Tiploc === selectedTrain.destinationTiploc
+    );
 
-        if (!origin || !destination) return;
+    if (!origin || !destination) return;
 
-        // Resolve origin + destination to coordinates
-        const locations = await trainApi.getTiplocLocations([origin, destination]);
+    const start: [number, number] = [origin.Latitude, origin.Longitude];
+    const end: [number, number] = [destination.Latitude, destination.Longitude];
 
-        const coords: [number, number][] = locations.map((loc: any) => [
-          loc.latitude,
-          loc.longitude
-        ]);
-
-        setRoutePositions(coords);
-
-        if (coords.length > 1) {
-          const bounds = L.latLngBounds(coords);
-          map.fitBounds(bounds, { padding: [50, 50] });
-        }
-
-      } catch (err) {
-        console.error("Route rendering failed:", err);
+    const generateInterpolatedRoute = (
+      start: [number, number],
+      end: [number, number],
+      segments: number
+    ) => {
+      const points: [number, number][] = [];
+      for (let i = 0; i <= segments; i++) {
+        const lat = start[0] + ((end[0] - start[0]) * i) / segments;
+        const lng = start[1] + ((end[1] - start[1]) * i) / segments;
+        points.push([lat, lng]);
       }
+      return points;
     };
 
-    fetchRoute();
+    const simulatedRoute = generateInterpolatedRoute(start, end, 12);
 
-  }, [selectedTrain, map]);
+    setRoutePositions(simulatedRoute);
+
+    const stopDetails = simulatedRoute.map((_, index) => ({
+      name:
+        index === 0
+          ? selectedTrain.originLocation
+          : index === simulatedRoute.length - 1
+          ? selectedTrain.destinationLocation
+          : `Intermediate Stop ${index}`,
+      type:
+        index === 0
+          ? "ORIGIN"
+          : index === simulatedRoute.length - 1
+          ? "DESTINATION"
+          : "INTERMEDIATE"
+    }));
+
+    setRouteStops(stopDetails);
+
+    const bounds = L.latLngBounds(simulatedRoute);
+    map.fitBounds(bounds, { padding: [50, 50] });
+
+  }, [selectedTrain, map, setRouteStops]);
 
   if (routePositions.length < 2) return null;
 
@@ -125,7 +124,7 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: any | null }) => {
         <CircleMarker
           key={index}
           center={pos}
-          radius={6}
+          radius={5}
           pathOptions={{
             color: "#f6ad55",
             fillColor: "#f6ad55",
@@ -138,7 +137,7 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: any | null }) => {
         positions={routePositions}
         pathOptions={{
           color: "#e53e3e",
-          weight: 6,
+          weight: 5,
           opacity: 0.95
         }}
       />
@@ -146,118 +145,78 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: any | null }) => {
   );
 };
 
-// ---------------- TIPLOC CANVAS ----------------
-const TiplocCanvasLayer = () => {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!map) return;
-
-    const renderer = L.canvas({ padding: 0.5 });
-
-    const markers = tiplocs
-      .map((t) => {
-        if (!t.Latitude || !t.Longitude) return null;
-
-        return L.circleMarker([t.Latitude, t.Longitude], {
-          renderer,
-          radius: 4,
-          color: '#3388ff',
-          fillColor: '#3388ff',
-          fillOpacity: 0.8,
-          weight: 1
-        });
-      })
-      .filter((m): m is L.CircleMarker => m !== null);
-
-    const layerGroup = L.featureGroup(markers).addTo(map);
-    return () => layerGroup.remove();
-
-  }, [map]);
-
-  return null;
-};
-
 // ---------------- MAIN MAP ----------------
 interface MapAreaProps {
   targetView?: MapTarget | null;
   selectedTrain?: any | null;
+  setRouteStops: (stops: any[]) => void;
 }
 
-const MapArea = ({ targetView, selectedTrain }: MapAreaProps) => {
-    const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
+const MapArea = ({
+  targetView,
+  selectedTrain,
+  setRouteStops
+}: MapAreaProps) => {
 
-    //isLoading essentially controls when spinner shows
-    const [isLoading, setIsLoading] = useState(true); //starts as true when application loads
-    //error on the other hand controls when alert shows
-    const [error, setError] = useState<string | null>(null); 
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            // change this to simulate failure
-            const shouldFail = false;
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 800);
 
-            if (shouldFail) {
-                setError("Sorry, unable to load rail data... Please try again!");
-            }
+    return () => clearTimeout(timer);
+  }, []);
 
-            setIsLoading(false);
-        }, 1200); // essentially waits 1.2 seconds before ending loading
-
-        return () => clearTimeout(timer); //clears up to prevents timer running if component unmounts
-    }, []);
-
-    //the visual of isLoading
-    if (isLoading) {
-        return (
-            <Box w="full" h="full" position="relative" id="map-container" display="flex" alignItems="center" justifyContent="center">
-                <Spinner size="xl" />
-            </Box>
-        );
-    }
-
-    if (error) {
-        return (
-            <Box w="full" h="full" position="relative" id="map-container" p="6">
-                <Alert status="error">
-                    <AlertIcon />
-                    {error}
-                </Alert>
-            </Box>
-        );
-    }
-
+  if (isLoading) {
     return (
-        <Box w="full" h="full" position="relative" id="map-container">
-            <MapContainer
-                center={UK_CENTER}
-                zoom={DEFAULT_ZOOM}
-                style={{ height: "100%", width: "100%" }}
-                scrollWheelZoom={true}
-                zoomControl={false}
-                preferCanvas={true}
-            >
-                <MapController targetView={targetView || null} selectedTrain={selectedTrain || null} />
-
-                <MapControls
-                    currentLayer={activeLayer}
-                    onLayerChange={setActiveLayer}
-                />
-
-                <TileLayer
-                    key={activeLayer.name}
-                    attribution={activeLayer.attribution}
-                    url={activeLayer.url}
-                    eventHandlers={{
-                        tileerror: () => {
-                            setError("Sorry, unable to load rail data... Please try again!");
-                        },
-                    }}
-                />
-                <TiplocCanvasLayer />
-            </MapContainer>
-        </Box>
+      <Box w="full" h="full" display="flex" alignItems="center" justifyContent="center">
+        <Spinner size="xl" />
+      </Box>
     );
+  }
+
+  if (error) {
+    return (
+      <Box w="full" h="full" p="6">
+        <Alert status="error">
+          <AlertIcon />
+          {error}
+        </Alert>
+      </Box>
+    );
+  }
+
+  return (
+    <Box w="full" h="full">
+      <MapContainer
+        center={UK_CENTER}
+        zoom={DEFAULT_ZOOM}
+        style={{ height: "100%", width: "100%" }}
+        scrollWheelZoom
+        zoomControl={false}
+        preferCanvas
+      >
+        <MapController
+          targetView={targetView || null}
+          selectedTrain={selectedTrain || null}
+        />
+
+        <TileLayer
+          attribution='&copy; OpenStreetMap &copy; CARTO'
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+        />
+
+        <RouteRenderer
+          selectedTrain={selectedTrain || null}
+          setRouteStops={setRouteStops}
+        />
+
+      </MapContainer>
+    </Box>
+  );
 };
 
 export default MapArea;
+
