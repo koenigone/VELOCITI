@@ -62,8 +62,12 @@ const MAP_LAYERS = {
 };
 
 // canvas layer - drawing tiplocs as icons on canvas for better performance with many points
-const TiplocCanvasLayer = () => {
-    const map = useMap();
+type TiplocCanvasLayerProps = {
+  onJourneyClick?: (stops: Stop[]) => void;
+};
+
+const TiplocCanvasLayer = ({ onJourneyClick }: TiplocCanvasLayerProps) => {
+  const map = useMap();
 
     useEffect(() => {
         if (!map) return;
@@ -73,29 +77,37 @@ const TiplocCanvasLayer = () => {
 
         // loop through all 16k tiplocs
         const markers = tiplocs.map((t) => {
-            if (!t.Latitude || !t.Longitude) return null;
+        if (!t.Latitude || !t.Longitude) return null;
 
-            // create custom circle markers for tiplocs (could be changed later)
-            const marker = L.circleMarker([t.Latitude, t.Longitude], {
-                renderer: myRenderer,
-                radius: 4,
-                color: '#3388ff',
-                fillColor: '#3388ff',
-                fillOpacity: 0.8,
-                weight: 1
-            });
+        const marker = L.circleMarker([t.Latitude, t.Longitude], {
+            renderer: myRenderer,
+            radius: 4,
+            color: '#3388ff',
+            fillColor: '#3388ff',
+            fillOpacity: 0.8,
+            weight: 1,
+        });
 
-            // marker popup content
-            marker.bindPopup(`
-                <div style="font-family: sans-serif;">
-                    <h3 style="margin:0 0 5px;">${t.Name}</h3>
-                    <b>TIPLOC:</b> ${t.Tiploc}<br/>
-                    ${t.Details.CRS ? `<b>CRS:</b> ${t.Details.CRS}` : ''}
-                </div>
-            `);
+        // marker popup content
+        marker.bindPopup(`
+            <div style="font-family: sans-serif;">
+            <h3 style="margin:0 0 5px;">${t.Name}</h3>
+            <b>TIPLOC:</b> ${t.Tiploc}<br/>
+            ${t.Details.CRS ? `<b>CRS:</b> ${t.Details.CRS}` : ''}
+            </div>
+        `);
 
-            return marker;
-        }).filter((m): m is L.CircleMarker => m !== null); // filter out any nulls from missing lat/lon
+        // DEMO: when user clicks a specific TIPLOC, trigger the journey
+        marker.on('click', () => {
+            // choose one TIPLOC code for demo, for example "AACHEN"
+            if (t.Tiploc === 'SHEFCAT' && onJourneyClick) {
+            onJourneyClick(demoJourneyStops);
+            }
+        });
+
+        return marker;
+        }).filter((m): m is L.CircleMarker => m !== null);
+        // filter out any nulls from missing lat/lon
 
         const layerGroup = L.featureGroup(markers).addTo(map);
 
@@ -193,7 +205,7 @@ const MapControls = ({ currentLayer, onLayerChange }: any) => {
 };
 
 // main map component
-const MapArea = () => {
+const MapArea = ({ onJourneyClick }: MapAreaProps) => {
     const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
 
     return (
@@ -217,7 +229,8 @@ const MapArea = () => {
                     url={activeLayer.url}
                 />
 
-                <TiplocCanvasLayer />
+                <TiplocCanvasLayer onJourneyClick={onJourneyClick} />
+
             </MapContainer>
         </Box>
     );
