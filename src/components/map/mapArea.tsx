@@ -240,9 +240,12 @@ const MapArea = ({ targetView, selectedTrain }: MapAreaProps) => {
                 <MapController targetView={targetView || null} selectedTrain={selectedTrain || null} />
 
                 <MapControls
-                    currentLayer={activeLayer}
-                    onLayerChange={setActiveLayer}
+                currentLayer={activeLayer}
+                onLayerChange={setActiveLayer}
+                showTiplocs={showTiplocs}
+                onToggleTiplocs={() => setShowTiplocs((prev: boolean) => !prev)}
                 />
+
 
                 <TileLayer
                     key={activeLayer.name}
