@@ -121,7 +121,8 @@ const TiplocCanvasLayer = ({ onJourneyClick }: TiplocCanvasLayerProps) => {
 };
 
 // map controls section
-const MapControls = ({ currentLayer, onLayerChange }: any) => {
+const MapControls = ({ currentLayer, onLayerChange, showTiplocs, onToggleTiplocs }: any) => {
+
     const map = useMap();
 
     const handleReset = () => {
@@ -161,6 +162,14 @@ const MapControls = ({ currentLayer, onLayerChange }: any) => {
                 leftIcon={<MdOutlineZoomInMap fontSize="1.1rem" color="#3182ce" />}
             >
                 Reset Map
+            </Button>
+
+            {/* TOGGLE TIPLOCS BUTTON */}
+            <Button
+            {...glassButtonStyle}
+            onClick={onToggleTiplocs}
+            >
+            {showTiplocs ? 'Hide TIPLOCs' : 'Show TIPLOCs'}
             </Button>
 
             {/* LAYER MENU */}
@@ -206,7 +215,9 @@ const MapControls = ({ currentLayer, onLayerChange }: any) => {
 
 // main map component
 const MapArea = ({ onJourneyClick }: MapAreaProps) => {
-    const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
+  const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
+  const [showTiplocs, setShowTiplocs] = useState(false); // TIPLOCs hidden by default
+
 
     return (
         <Box w="full" h="full" position="relative" id="map-container">
@@ -219,9 +230,12 @@ const MapArea = ({ onJourneyClick }: MapAreaProps) => {
                 preferCanvas={true}
             >
                 <MapControls
-                    currentLayer={activeLayer}
-                    onLayerChange={setActiveLayer}
+                currentLayer={activeLayer}
+                onLayerChange={setActiveLayer}
+                showTiplocs={showTiplocs}
+                onToggleTiplocs={() => setShowTiplocs((prev: boolean) => !prev)}
                 />
+
 
                 <TileLayer
                     key={activeLayer.name}
@@ -229,7 +243,10 @@ const MapArea = ({ onJourneyClick }: MapAreaProps) => {
                     url={activeLayer.url}
                 />
 
+                {showTiplocs && (
                 <TiplocCanvasLayer onJourneyClick={onJourneyClick} />
+                )}
+
 
             </MapContainer>
         </Box>
