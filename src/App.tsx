@@ -14,8 +14,9 @@ function App() {
   };
 
   const handleTrainSelect = (train: any) => {
-    setSelectedTrain(train);
-  };
+  console.log("TRAIN SELECTED:", train);
+  setSelectedTrain(train);
+};
 
   return (
     <Layout
@@ -36,3 +37,4 @@ function App() {
 }
 
 export default App;
+
