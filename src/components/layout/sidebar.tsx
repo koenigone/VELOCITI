@@ -11,6 +11,8 @@ import type { Train } from '../../types';
 interface SidebarProps {
   onLocationSelect: (lat: number, lng: number, stationCode: string) => void;
   onTrainSelect: (train: Train) => void;
+  selectedTrain: any | null;
+  routeStops: any[];
 }
 
 
@@ -65,7 +67,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     } catch (error: any) {
       toast({ // custom error toast
         title: "Search failed",
-        description: error.message || "Could not find station or schedule.",
+        description: error.message || "Could not find station.",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -88,11 +90,11 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
         <Text fontSize="xs" fontWeight="bold" color="gray.500" letterSpacing="wider" mb="2">
           TRAIN SEARCH
         </Text>
+
         <Flex gap={2}>
           <Input
             placeholder="Enter TIPLOC (e.g. EUSTON)"
             size="sm"
-            borderRadius="md"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -201,6 +203,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
             </Text>
           </Flex>
         )}
+
       </VStack>
     </Box>
   );

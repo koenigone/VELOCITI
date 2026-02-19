@@ -7,7 +7,8 @@ import type { Train } from './types';
 import type { MapTarget } from './components/map/mapArea';
 
 
-function App() {
+function App() 
+{
   const [mapTarget, setMapTarget] = useState<MapTarget | null>(null);
   const [selectedTrain, setSelectedTrain] = useState<Train | null>(null);
   const [searchedStation, setSearchedStation] = useState<string | null>(null);
@@ -30,6 +31,8 @@ function App() {
         <Sidebar
           onLocationSelect={handleLocationSelect}
           onTrainSelect={handleTrainSelect}
+          selectedTrain={selectedTrain}
+          routeStops={routeStops}   
         />
       }
       mapContent={
