@@ -1,266 +1,234 @@
 import 'leaflet/dist/leaflet.css';
-import { useState, useEffect } from 'react';
-import { Box, Button, Menu, MenuButton, MenuList, MenuItem } from '@chakra-ui/react';
-import { MapContainer, TileLayer, useMap, Polyline, CircleMarker } from 'react-leaflet';
-import { trainApi } from '../../api/api';
-import { FaLayerGroup } from "react-icons/fa";
-import { MdOutlineZoomInMap } from "react-icons/md";
-import L from 'leaflet';
-import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
-import type { TiplocData, MapTarget } from '../../types';
+import { useState, useEffect, useRef } from 'react';
+import { Box, Spinner } from '@chakra-ui/react';
 
-// ---------------- CONFIG ----------------
+import { MapContainer, TileLayer, useMap, Polyline, CircleMarker } from 'react-leaflet';
+import L from 'leaflet';
+
+import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
+import type { TiplocData, Train } from '../../types';
+import MapControls, { MAP_LAYERS } from './mapControls';
+
+
+// configs
 const UK_CENTER: [number, number] = [54.5, -2.5];
 const DEFAULT_ZOOM = 6;
-const tiplocs = (tiplocDataRaw as any).Tiplocs as TiplocData[];
+const ALL_TIPLOCS = (tiplocDataRaw as any).Tiplocs as TiplocData[];
 
-// ---------------- MAP LAYERS ----------------
-const MAP_LAYERS = {
-  standard: {
-    name: "Standard",
-    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-    attribution: '&copy; OpenStreetMap &copy; CARTO'
-  },
-  openStreet: {
-    name: "Open Street",
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution: '&copy; OpenStreetMap'
-  },
-  satellite: {
-    name: "Satellite",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: 'Tiles &copy; Esri'
-  },
-  dark: {
-    name: "Dark Mode",
-    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    attribution: '&copy; OpenStreetMap &copy; CARTO'
-  },
-};
+// interfaces and props
+export interface MapTarget {
+  lat: number;
+  lng: number;
+  zoom?: number;
+}
 
-// ---------------- MAP CONTROLLER ----------------
-const MapController = ({
-  targetView,
-  selectedTrain
-}: {
-  targetView: MapTarget | null,
-  selectedTrain: any | null
-}) => {
+interface MapAreaProps {
+  targetView?: MapTarget | null;
+  selectedTrain?: Train | null;
+  searchedStation?: string | null;
+}
+
+interface MapControllerProps extends MapAreaProps {
+  resetTrigger: number;
+}
+
+
+// handles map movements based on the selected station (tiploc) or train, also used to reset map to default view
+const MapController = ({ targetView, selectedTrain, resetTrigger }: MapControllerProps) => {
   const map = useMap();
 
-  // Zoom to searched station
+  // jump to target view when it changes from search
   useEffect(() => {
     if (targetView) {
-      map.flyTo([targetView.lat, targetView.lng], targetView.zoom || 14);
+      map.flyTo([targetView.lat, targetView.lng], targetView.zoom || 14, { duration: 1.5 });
     }
   }, [targetView, map]);
 
-  // Zoom to selected train origin
+  // jump to train origin when a train is selected from the sidebar
   useEffect(() => {
     if (!selectedTrain) return;
+    const origin = ALL_TIPLOCS.find(t => t.Tiploc === selectedTrain.originTiploc);
 
-    const foundLocation = tiplocs.find(
-      t => t.Tiploc === selectedTrain.originTiploc
-    );
-
-    if (foundLocation?.Latitude && foundLocation?.Longitude) {
-      map.flyTo(
-        [foundLocation.Latitude, foundLocation.Longitude],
-        15
-      );
+    if (origin?.Latitude && origin?.Longitude) {
+      map.flyTo([origin.Latitude, origin.Longitude], 13, { duration: 1.5 });
     }
   }, [selectedTrain, map]);
+
+  // reset map to default view when resetTrigger changes
+  useEffect(() => {
+    if (resetTrigger > 0) {
+      map.flyTo(UK_CENTER, DEFAULT_ZOOM, { duration: 1.5, easeLinearity: 0.25 });
+    }
+  }, [resetTrigger, map]);
 
   return null;
 };
 
-// ---------------- ROUTE RENDERER ----------------
-const RouteRenderer = ({ selectedTrain }: { selectedTrain: any | null }) => {
+
+// layer to show the train route from origin to destination when a train is selected
+const RouteLayer = ({ selectedTrain }: { selectedTrain: Train | null }) => {
   const map = useMap();
-  const [routePositions, setRoutePositions] = useState<[number, number][]>([]);
+  const [routePath, setRoutePath] = useState<[number, number][]>([]);
 
   useEffect(() => {
+
+    // if no train or missing tiploc info, clear route and exit
     if (!selectedTrain) {
-      setRoutePositions([]);
+      setRoutePath([]);
       return;
     }
 
-    const fetchRoute = async () => {
-      try {
+    const { originTiploc, destinationTiploc } = selectedTrain;
+    if (!originTiploc || !destinationTiploc) return; // safety check for missing tiploc data
 
-        const origin = selectedTrain.originTiploc;
-        const destination = selectedTrain.destinationTiploc;
+    // find origin and destination tiploc data to get lat/lng for route
+    const origin = ALL_TIPLOCS.find(t => t.Tiploc === originTiploc);
+    const dest = ALL_TIPLOCS.find(t => t.Tiploc === destinationTiploc);
 
-        if (!origin || !destination) return;
+    if (origin?.Latitude && origin?.Longitude && dest?.Latitude && dest?.Longitude) {
+      const path: [number, number][] = [
+        [origin.Latitude, origin.Longitude],
+        [dest.Latitude, dest.Longitude]
+      ];
 
-        // Resolve origin + destination to coordinates
-        const locations = await trainApi.getTiplocLocations([origin, destination]);
-
-        const coords: [number, number][] = locations.map((loc: any) => [
-          loc.latitude,
-          loc.longitude
-        ]);
-
-        setRoutePositions(coords);
-
-        if (coords.length > 1) {
-          const bounds = L.latLngBounds(coords);
-          map.fitBounds(bounds, { padding: [50, 50] });
-        }
-
-      } catch (err) {
-        console.error("Route rendering failed:", err);
-      }
-    };
-
-    fetchRoute();
-
+      setRoutePath(path);
+      map.fitBounds(L.latLngBounds(path), { padding: [50, 50], maxZoom: 12 });
+    }
   }, [selectedTrain, map]);
 
-  if (routePositions.length < 2) return null;
+  if (routePath.length === 0) return null;
 
+  // render route on the map with start/end markers
   return (
     <>
-      {routePositions.map((pos, index) => (
-        <CircleMarker
-          key={index}
-          center={pos}
-          radius={6}
-          pathOptions={{
-            color: "#f6ad55",
-            fillColor: "#f6ad55",
-            fillOpacity: 1
-          }}
-        />
-      ))}
-
-      <Polyline
-        positions={routePositions}
-        pathOptions={{
-          color: "#e53e3e",
-          weight: 6,
-          opacity: 0.95
-        }}
-      />
+      <Polyline positions={routePath} pathOptions={{ color: '#e53e3e', weight: 4, dashArray: '10, 10', opacity: 0.8 }} />
+      <CircleMarker center={routePath[0]} radius={6} pathOptions={{ color: 'green', fillColor: 'green', fillOpacity: 1 }} />
+      <CircleMarker center={routePath[routePath.length - 1]} radius={6} pathOptions={{ color: 'red', fillColor: 'red', fillOpacity: 1 }} />
     </>
   );
 };
 
-// ---------------- TIPLOC CANVAS ----------------
-const TiplocCanvasLayer = () => {
+
+// styles for tiploc markers
+const DEFAULT_STATION_STYLE: L.CircleMarkerOptions = { // default style for all stations
+  radius: 3,
+  color: '#3182ce',
+  fillColor: '#63b3ed',
+  fillOpacity: 0.8,
+  weight: 1
+};
+
+const SEARCHED_STATION_STYLE: L.CircleMarkerOptions = { // custom style for searched tiplocs/stations
+  radius: 6,
+  color: '#e53e3e',
+  fillColor: '#fc8181',
+  fillOpacity: 0.8,
+  weight: 2
+};
+
+
+// layer to show tiploc stations, either all or just the searched station
+const TiplocLayer = ({ visible, searchedStation }: { visible: boolean, searchedStation?: string | null }) => {
   const map = useMap();
+  const layerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
-    if (!map) return;
+    if (!map) return; // safety check for map availability
 
-    const renderer = L.canvas({ padding: 0.5 });
+    let tiplocsToRender: TiplocData[] = []; // default to empty
 
-    const markers = tiplocs
-      .map((t) => {
-        if (!t.Latitude || !t.Longitude) return null;
+    // check if we should show all tiplocs or just the searched station, and prepare the list accordingly
+    if (visible) {
+      tiplocsToRender = ALL_TIPLOCS;
+    } else if (searchedStation) {
+      const found = ALL_TIPLOCS.find(t => t.Tiploc === searchedStation);
+      if (found) tiplocsToRender = [found];
+    }
 
-        return L.circleMarker([t.Latitude, t.Longitude], {
-          renderer,
-          radius: 4,
-          color: '#3388ff',
-          fillColor: '#3388ff',
-          fillOpacity: 0.8,
-          weight: 1
-        });
-      })
-      .filter((m): m is L.CircleMarker => m !== null);
+    // clear existing layer before adding new markers
+    if (layerRef.current) {
+      map.removeLayer(layerRef.current);
+    }
 
-    const layerGroup = L.featureGroup(markers).addTo(map);
-    return () => layerGroup.remove();
+    // if there are no tiplocs to render, exit early
+    if (tiplocsToRender.length === 0) return;
 
-  }, [map]);
+    // create a canvas renderer for better performance with huge amount of markers
+    const canvasRenderer = L.canvas({ padding: 0.5 });
+
+    // create markers for each tiploc. special styling for searched station
+    const markers = tiplocsToRender.map(t => {
+      if (!t.Latitude || !t.Longitude) return null;
+
+      const isSearchedTarget = !visible && searchedStation === t.Tiploc;
+      const baseStyle = isSearchedTarget ? SEARCHED_STATION_STYLE : DEFAULT_STATION_STYLE;
+
+      return L.circleMarker([t.Latitude, t.Longitude], { ...baseStyle, renderer: canvasRenderer })
+        .bindPopup(`
+        <div style="font-family: system-ui;">
+          <strong>${t.Name}</strong><br/>
+          <small>TIPLOC: ${t.Tiploc}</small>
+        </div>
+      `);
+    }).filter((m): m is L.CircleMarker => m !== null);
+
+    // create a layer group for the markers and add to map
+    layerRef.current = L.featureGroup(markers);
+    map.addLayer(layerRef.current);
+
+    return () => { // cleanup function to remove layer when unmounting or before next render
+      if (layerRef.current) map.removeLayer(layerRef.current);
+    };
+  }, [map, visible, searchedStation]);
 
   return null;
 };
 
-// ---------------- MAIN MAP ----------------
-interface MapAreaProps {
-  targetView?: MapTarget | null;
-  selectedTrain?: any | null;
-}
 
-const MapArea = ({ targetView, selectedTrain }: MapAreaProps) => {
-    const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
+// main map area component
+const MapArea = ({ targetView, selectedTrain = null, searchedStation }: MapAreaProps) => {
+  const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
+  const [showTiplocs, setShowTiplocs] = useState(false);
+  const [isMapReady, setIsMapReady] = useState(false);
+  const [resetTrigger, setResetTrigger] = useState(0);
 
-    //isLoading essentially controls when spinner shows
-    const [isLoading, setIsLoading] = useState(true); //starts as true when application loads
-    //error on the other hand controls when alert shows
-    const [error, setError] = useState<string | null>(null); 
+  // handle map reset by incrementing resetTrigger
+  const handleReset = () => setResetTrigger(prev => prev + 1);
 
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            // change this to simulate failure
-            const shouldFail = false;
+  return (
+    <Box w="full" h="full" position="relative" id="map-container" bg="gray.100">
+      <MapContainer
+        center={UK_CENTER}
+        zoom={DEFAULT_ZOOM}
+        style={{ height: "100%", width: "100%" }}
+        scrollWheelZoom={true}
+        zoomControl={false}
+        preferCanvas={true}
+        whenReady={() => setIsMapReady(true)}
+      >
+        <TileLayer key={activeLayer.name} attribution={activeLayer.attribution} url={activeLayer.url} />
 
-            if (shouldFail) {
-                setError("Sorry, unable to load rail data... Please try again!");
-            }
+        <MapController targetView={targetView} selectedTrain={selectedTrain} resetTrigger={resetTrigger} />
 
-            setIsLoading(false);
-        }, 1200); // essentially waits 1.2 seconds before ending loading
+        <TiplocLayer visible={showTiplocs} searchedStation={searchedStation} />
+        <RouteLayer selectedTrain={selectedTrain} />
 
-        return () => clearTimeout(timer); //clears up to prevents timer running if component unmounts
-    }, []);
+        <MapControls
+          currentLayer={activeLayer}
+          onLayerChange={setActiveLayer}
+          onReset={handleReset}
+          showTiplocs={showTiplocs}
+          onToggleTiplocs={() => setShowTiplocs(!showTiplocs)}
+        />
+      </MapContainer>
 
-    //the visual of isLoading
-    if (isLoading) {
-        return (
-            <Box w="full" h="full" position="relative" id="map-container" display="flex" alignItems="center" justifyContent="center">
-                <Spinner size="xl" />
-            </Box>
-        );
-    }
-
-    if (error) {
-        return (
-            <Box w="full" h="full" position="relative" id="map-container" p="6">
-                <Alert status="error">
-                    <AlertIcon />
-                    {error}
-                </Alert>
-            </Box>
-        );
-    }
-
-    return (
-        <Box w="full" h="full" position="relative" id="map-container">
-            <MapContainer
-                center={UK_CENTER}
-                zoom={DEFAULT_ZOOM}
-                style={{ height: "100%", width: "100%" }}
-                scrollWheelZoom={true}
-                zoomControl={false}
-                preferCanvas={true}
-            >
-                <MapController targetView={targetView || null} selectedTrain={selectedTrain || null} />
-
-                <MapControls
-                currentLayer={activeLayer}
-                onLayerChange={setActiveLayer}
-                showTiplocs={showTiplocs}
-                onToggleTiplocs={() => setShowTiplocs((prev: boolean) => !prev)}
-                />
-
-
-                <TileLayer
-                    key={activeLayer.name}
-                    attribution={activeLayer.attribution}
-                    url={activeLayer.url}
-                    eventHandlers={{
-                        tileerror: () => {
-                            setError("Sorry, unable to load rail data... Please try again!");
-                        },
-                    }}
-                />
-                <TiplocCanvasLayer />
-            </MapContainer>
+      {!isMapReady && (
+        <Box position="absolute" inset={0} bg="whiteAlpha.900" zIndex={2000} display="flex" alignItems="center" justifyContent="center">
+          <Spinner size="xl" color="blue.500" thickness="4px" />
         </Box>
-    );
+      )}
+    </Box>
+  );
 };
 
 export default MapArea;
