@@ -35,7 +35,8 @@ interface MapControllerProps {
   resetTrigger: number;
 }
 
-// handles map movements based on the selected station (tiploc) or train, also used to reset map to default view
+
+// handles map movements based on the selected station (tiploc), train and reset map to default view
 const MapController = ({
   targetView,
   selectedTrain,
@@ -43,12 +44,14 @@ const MapController = ({
 }: MapControllerProps) => {
   const map = useMap();
 
+  // when targetView changes, fly to new location with animation
   useEffect(() => {
     if (targetView) {
       map.flyTo([targetView.lat, targetView.lng], targetView.zoom || 14);
     }
   }, [targetView, map]);
 
+  // when selectedTrain changes, find the origin station's location and fly to it
   useEffect(() => {
     if (!selectedTrain) return;
 
@@ -56,6 +59,7 @@ const MapController = ({
       t => t.Tiploc === selectedTrain.originTiploc
     );
 
+    // if location is found and has valid coordinates, fly to it with animation
     if (foundLocation?.Latitude && foundLocation?.Longitude) {
       map.flyTo(
         [foundLocation.Latitude, foundLocation.Longitude],
@@ -64,6 +68,7 @@ const MapController = ({
     }
   }, [selectedTrain, map]);
 
+  // when resetTrigger is clicked, fly back to default UK view with animation
   useEffect(() => {
     if (resetTrigger > 0) {
       map.flyTo(UK_CENTER, DEFAULT_ZOOM, { duration: 1.5, easeLinearity: 0.25 });
@@ -73,17 +78,17 @@ const MapController = ({
   return null;
 };
 
-const RouteRenderer = ({
-  selectedTrain,
-  setRouteStops
-}: {
-  selectedTrain: any | null;
-  setRouteStops: (stops: any[]) => void;
+
+// draw the route of the selected train by simulating a path between origin and destination
+const RouteRenderer = ({ selectedTrain, setRouteStops}:
+  { selectedTrain: any | null; setRouteStops: (stops: any[]) => void;
 }) => {
 
   const map = useMap();
   const [routePositions, setRoutePositions] = useState<[number, number][]>([]);
 
+  // when selectedTrain changes, calculate a simulated route between
+  // origin and destination and update route positions and stops
   useEffect(() => {
     if (!selectedTrain) {
       setRoutePositions([]);
@@ -91,6 +96,8 @@ const RouteRenderer = ({
       return;
     }
 
+    // find the origin and destination tiploc data based on the selected train's
+    // origin and destination tiplocs
     const origin = ALL_TIPLOCS.find(
       t => t.Tiploc === selectedTrain.originTiploc
     );
@@ -99,8 +106,10 @@ const RouteRenderer = ({
       t => t.Tiploc === selectedTrain.destinationTiploc
     );
 
+    // if either origin or destination is not found or has invalid coordinates, exit early
     if (!origin || !destination) return;
 
+    // create a simple simulated route by interpolating points between origin and destination
     const start: [number, number] = [origin.Latitude, origin.Longitude];
     const end: [number, number] = [destination.Latitude, destination.Longitude];
 
@@ -110,18 +119,18 @@ const RouteRenderer = ({
       segments: number
     ) => {
       const points: [number, number][] = [];
-      for (let i = 0; i <= segments; i++) {
-        const lat = start[0] + ((end[0] - start[0]) * i) / segments;
-        const lng = start[1] + ((end[1] - start[1]) * i) / segments;
-        points.push([lat, lng]);
+      for (let i = 0; i <= segments; i++) { // include both start and end points
+        const lat = start[0] + ((end[0] - start[0]) * i) / segments; // linear interpolation for latitude
+        const lng = start[1] + ((end[1] - start[1]) * i) / segments; // linear interpolation for longitude
+        points.push([lat, lng]); // add the interpolated point to the route
       }
       return points;
     };
 
     const simulatedRoute = generateInterpolatedRoute(start, end, 12);
+    setRoutePositions(simulatedRoute); // update state with the new route positions
 
-    setRoutePositions(simulatedRoute);
-
+    // create stop details for the route stops based on the simulated route and selected train's origin/destination
     const stopDetails = simulatedRoute.map((_, index) => ({
       name:
         index === 0
@@ -137,14 +146,15 @@ const RouteRenderer = ({
           : "INTERMEDIATE"
     }));
 
-    setRouteStops(stopDetails);
+    setRouteStops(stopDetails); // update the route stops
 
+    // fit the map bounds to the simulated route with some padding for better visibility
     const bounds = L.latLngBounds(simulatedRoute);
     map.fitBounds(bounds, { padding: [50, 50] });
 
   }, [selectedTrain, map, setRouteStops]);
 
-  if (routePositions.length < 2) return null;
+  if (routePositions.length < 2) return null; // need at least 2 points to draw a route
 
   return (
     <>
@@ -260,6 +270,7 @@ const MapArea = ({
   const [resetTrigger, setResetTrigger] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   
+  // function to trigger map reset by incrementing the resetTrigger state
   const handleReset = () => setResetTrigger(prev => prev + 1);
 
   useEffect(() => {
@@ -270,7 +281,7 @@ const MapArea = ({
     return () => clearTimeout(timer);
   }, []);
 
-  if (isLoading) {
+  if (isLoading) { // map loading spinner
     return (
       <Box w="full" h="full" display="flex" alignItems="center" justifyContent="center">
         <Spinner size="xl" />
