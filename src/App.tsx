@@ -21,7 +21,6 @@ function App()
 
   const handleTrainSelect = (train: any) => 
   {
-    console.log("TRAIN SELECTED:", train);
     setSelectedTrain(train);
   };
 
