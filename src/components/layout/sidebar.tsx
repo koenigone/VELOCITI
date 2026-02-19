@@ -58,7 +58,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     try { // fetch location data for the searched tiploc
       const location = await trainApi.getLocation(searchTerm);
       const schedule = await trainApi.getSchedule(searchTerm);
-      
+
       onLocationSelect(location.latitude, location.longitude, searchTerm.toUpperCase());
       setTrains(schedule);
 
@@ -90,7 +90,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
         </Text>
         <Flex gap={2}>
           <Input
-            placeholder="Enter TIPLOC (e.g. SHEFFLD)"
+            placeholder="Enter TIPLOC (e.g. EUSTON)"
             size="sm"
             borderRadius="md"
             value={searchTerm}
@@ -186,11 +186,18 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
           );
         })}
 
-        {!isLoading && trains.length === 0 && searchTerm && (
-          <Flex direction="column" align="center" justify="center" py={10} color="gray.400">
-            <Icon as={MdTrain} boxSize={8} mb={2} opacity={0.5} />
-            <Text fontSize="sm" textAlign="center">
-              {trains.length === 0 ? "No active trains found for this station." : "Search for a station to view live departures."}
+        {!isLoading && trains.length === 0 && (
+          <Flex direction="column" align="center" justify="center" py={12} color="gray.400" mt={10}>
+            <Icon as={MdTrain} boxSize={12} mb={4} opacity={0.2} />
+            <Text fontSize="md" fontWeight="medium" textAlign="center" color="gray.500" mb={1}>
+              {!searchTerm
+                ? "Search for a station"
+                : "No active trains found"}
+            </Text>
+            <Text fontSize="sm" textAlign="center" px={6}>
+              {!searchTerm
+                ? "Enter a TIPLOC code above to view live departures"
+                : "We couldn't find any schedule for this TIPLOC. Please try another."}
             </Text>
           </Flex>
         )}
