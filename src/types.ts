@@ -33,10 +33,25 @@ export interface TiplocExport {
 export interface Train {
   trainId: string;
   headCode: string;
-  destinationLocation: string;
+  toc_Name?: string;
+  
+  // origin Info
   originTiploc: string;
-  lastReportedLocation?: string;
+  originLocation: string;
   scheduledDeparture: string;
+  actualDeparture?: string;
+  
+  // destination Info
+  destinationTiploc: string;
+  destinationLocation: string;
+  scheduledArrival: string;
+  actualArrival?: string;
+  
+  // live status
+  lastReportedLocation?: string;
+  lastReportedDelay: number;
+  lastReportedType: string;
+  cancelled: boolean;
 }
 
 export interface TiplocLocation {
@@ -45,10 +60,4 @@ export interface TiplocLocation {
   latitude: number;
   longitude: number;
   stanox: string;
-}
-
-export interface MapTarget {
-  lat: number;
-  lng: number;
-  zoom?: number;
 }
