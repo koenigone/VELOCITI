@@ -11,8 +11,6 @@ import type { Train } from '../../types';
 interface SidebarProps {
   onLocationSelect: (lat: number, lng: number, stationCode: string) => void;
   onTrainSelect: (train: Train) => void;
-  selectedTrain: any | null;
-  routeStops: any[];
 }
 
 
