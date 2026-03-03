@@ -8,7 +8,7 @@ function App()
 {
   const [mapTarget, setMapTarget] = useState<MapTarget | null>(null);
   const [selectedTrain, setSelectedTrain] = useState<any | null>(null);
-  const [, setRouteStops] = useState<any[]>([]); 
+  const [routeStops, setRouteStops] = useState<any[]>([]);
   const [searchedStation, setSearchedStation] = useState<string | null>(null);
 
   const handleLocationSelect = (lat: number, lng: number, stationCode: string) => 
@@ -31,6 +31,8 @@ function App()
         <Sidebar
           onLocationSelect={handleLocationSelect}
           onTrainSelect={handleTrainSelect}
+          selectedTrain={selectedTrain}
+          routeStops={routeStops}
         />
       }
       mapContent=
