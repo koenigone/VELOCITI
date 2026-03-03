@@ -11,6 +11,8 @@ import type { Train } from '../../types';
 interface SidebarProps {
   onLocationSelect: (lat: number, lng: number, stationCode: string) => void;
   onTrainSelect: (train: Train) => void;
+  selectedTrain: Train | null;
+  routeStops: any[];
 }
 
 
@@ -40,7 +42,7 @@ const formatTime = (isoString?: string) => {
 
 
 // main sidebar component
-const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
+const Sidebar = ({ onLocationSelect, onTrainSelect, selectedTrain, routeStops }: SidebarProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [trains, setTrains] = useState<Train[]>([]);
@@ -201,6 +203,29 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
             </Text>
           </Flex>
         )}
+
+        {selectedTrain && routeStops.length > 0 && (
+  <Box mt="4">
+    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb="2">
+      ROUTE STOPS
+    </Text>
+
+     {routeStops.map((stop, index) => 
+     (
+      <Box
+        key={index}
+        p="2"
+        borderBottomWidth="1px"
+        borderColor="gray.200"
+      >
+        <Text fontWeight="semibold">{stop.name}</Text>
+        <Text fontSize="xs" color="gray.500">
+          {stop.type}
+        </Text>
+      </Box>
+    ))}
+    </Box>
+    )}
 
       </VStack>
     </Box>
