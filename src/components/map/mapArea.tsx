@@ -6,14 +6,14 @@ import { MapContainer, TileLayer, useMap, Polyline, CircleMarker } from 'react-l
 import L from 'leaflet';
 
 import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
-import type { TiplocData, Train } from '../../types';
+import type { TiplocData } from '../../types';
 import MapControls, { MAP_LAYERS } from './mapControls';
-
 
 // configs
 const UK_CENTER: [number, number] = [54.5, -2.5];
 const DEFAULT_ZOOM = 6;
 const ALL_TIPLOCS = (tiplocDataRaw as any).Tiplocs as TiplocData[];
+
 
 // interfaces and props
 export interface MapTarget {
@@ -24,37 +24,51 @@ export interface MapTarget {
 
 interface MapAreaProps {
   targetView?: MapTarget | null;
-  selectedTrain?: Train | null;
+  selectedTrain?: any | null;
   searchedStation?: string | null;
+  setRouteStops: (stops: any[]) => void;
 }
 
-interface MapControllerProps extends MapAreaProps {
+interface MapControllerProps {
+  targetView?: MapTarget | null;
+  selectedTrain?: any | null;
   resetTrigger: number;
 }
 
 
-// handles map movements based on the selected station (tiploc) or train, also used to reset map to default view
-const MapController = ({ targetView, selectedTrain, resetTrigger }: MapControllerProps) => {
+// handles map movements based on the selected station (tiploc), train and reset map to default view
+const MapController = ({
+  targetView,
+  selectedTrain,
+  resetTrigger
+}: MapControllerProps) => {
   const map = useMap();
 
-  // jump to target view when it changes from search
+  // when targetView changes, fly to new location with animation
   useEffect(() => {
     if (targetView) {
-      map.flyTo([targetView.lat, targetView.lng], targetView.zoom || 14, { duration: 1.5 });
+      map.flyTo([targetView.lat, targetView.lng], targetView.zoom || 14);
     }
   }, [targetView, map]);
 
-  // jump to train origin when a train is selected from the sidebar
+  // when selectedTrain changes, find the origin station's location and fly to it
   useEffect(() => {
     if (!selectedTrain) return;
-    const origin = ALL_TIPLOCS.find(t => t.Tiploc === selectedTrain.originTiploc);
 
-    if (origin?.Latitude && origin?.Longitude) {
-      map.flyTo([origin.Latitude, origin.Longitude], 13, { duration: 1.5 });
+    const foundLocation = ALL_TIPLOCS.find(
+      t => t.Tiploc === selectedTrain.originTiploc
+    );
+
+    // if location is found and has valid coordinates, fly to it with animation
+    if (foundLocation?.Latitude && foundLocation?.Longitude) {
+      map.flyTo(
+        [foundLocation.Latitude, foundLocation.Longitude],
+        15
+      );
     }
   }, [selectedTrain, map]);
 
-  // reset map to default view when resetTrigger changes
+  // when resetTrigger is clicked, fly back to default UK view with animation
   useEffect(() => {
     if (resetTrigger > 0) {
       map.flyTo(UK_CENTER, DEFAULT_ZOOM, { duration: 1.5, easeLinearity: 0.25 });
@@ -65,49 +79,109 @@ const MapController = ({ targetView, selectedTrain, resetTrigger }: MapControlle
 };
 
 
-// layer to show the train route from origin to destination when a train is selected
-const RouteLayer = ({ selectedTrain }: { selectedTrain: Train | null }) => {
+// draw the route of the selected train by simulating a path between origin and destination
+const RouteRenderer = ({ selectedTrain, setRouteStops}:
+  { selectedTrain: any | null; setRouteStops: (stops: any[]) => void;
+}) => {
+
   const map = useMap();
-  const [routePath, setRoutePath] = useState<[number, number][]>([]);
+  const [routePositions, setRoutePositions] = useState<[number, number][]>([]);
 
+  // when selectedTrain changes, calculate a simulated route between
+  // origin and destination and update route positions and stops
   useEffect(() => {
-
-    // if no train or missing tiploc info, clear route and exit
     if (!selectedTrain) {
-      setRoutePath([]);
+      setRoutePositions([]);
+      setRouteStops([]);
       return;
     }
 
-    const { originTiploc, destinationTiploc } = selectedTrain;
-    if (!originTiploc || !destinationTiploc) return; // safety check for missing tiploc data
+    // find the origin and destination tiploc data based on the selected train's
+    // origin and destination tiplocs
+    const origin = ALL_TIPLOCS.find(
+      t => t.Tiploc === selectedTrain.originTiploc
+    );
 
-    // find origin and destination tiploc data to get lat/lng for route
-    const origin = ALL_TIPLOCS.find(t => t.Tiploc === originTiploc);
-    const dest = ALL_TIPLOCS.find(t => t.Tiploc === destinationTiploc);
+    const destination = ALL_TIPLOCS.find(
+      t => t.Tiploc === selectedTrain.destinationTiploc
+    );
 
-    if (origin?.Latitude && origin?.Longitude && dest?.Latitude && dest?.Longitude) {
-      const path: [number, number][] = [
-        [origin.Latitude, origin.Longitude],
-        [dest.Latitude, dest.Longitude]
-      ];
+    // if either origin or destination is not found or has invalid coordinates, exit early
+    if (!origin || !destination) return;
 
-      setRoutePath(path);
-      map.fitBounds(L.latLngBounds(path), { padding: [50, 50], maxZoom: 12 });
-    }
-  }, [selectedTrain, map]);
+    // create a simple simulated route by interpolating points between origin and destination
+    const start: [number, number] = [origin.Latitude, origin.Longitude];
+    const end: [number, number] = [destination.Latitude, destination.Longitude];
 
-  if (routePath.length === 0) return null;
+    const generateInterpolatedRoute = (
+      start: [number, number],
+      end: [number, number],
+      segments: number
+    ) => {
+      const points: [number, number][] = [];
+      for (let i = 0; i <= segments; i++) { // include both start and end points
+        const lat = start[0] + ((end[0] - start[0]) * i) / segments; // linear interpolation for latitude
+        const lng = start[1] + ((end[1] - start[1]) * i) / segments; // linear interpolation for longitude
+        points.push([lat, lng]); // add the interpolated point to the route
+      }
+      return points;
+    };
 
-  // render route on the map with start/end markers
+    const simulatedRoute = generateInterpolatedRoute(start, end, 12);
+    setRoutePositions(simulatedRoute); // update state with the new route positions
+
+    // create stop details for the route stops based on the simulated route and selected train's origin/destination
+    const stopDetails = simulatedRoute.map((_, index) => ({
+      name:
+        index === 0
+          ? selectedTrain.originLocation
+          : index === simulatedRoute.length - 1
+          ? selectedTrain.destinationLocation
+          : `Intermediate Stop ${index}`,
+      type:
+        index === 0
+          ? "ORIGIN"
+          : index === simulatedRoute.length - 1
+          ? "DESTINATION"
+          : "INTERMEDIATE"
+    }));
+
+    setRouteStops(stopDetails); // update the route stops
+
+    // fit the map bounds to the simulated route with some padding for better visibility
+    const bounds = L.latLngBounds(simulatedRoute);
+    map.fitBounds(bounds, { padding: [50, 50] });
+
+  }, [selectedTrain, map, setRouteStops]);
+
+  if (routePositions.length < 2) return null; // need at least 2 points to draw a route
+
   return (
     <>
-      <Polyline positions={routePath} pathOptions={{ color: '#e53e3e', weight: 4, dashArray: '10, 10', opacity: 0.8 }} />
-      <CircleMarker center={routePath[0]} radius={6} pathOptions={{ color: 'green', fillColor: 'green', fillOpacity: 1 }} />
-      <CircleMarker center={routePath[routePath.length - 1]} radius={6} pathOptions={{ color: 'red', fillColor: 'red', fillOpacity: 1 }} />
+      {routePositions.map((pos, index) => (
+        <CircleMarker
+          key={index}
+          center={pos}
+          radius={5}
+          pathOptions={{
+            color: "#f6ad55",
+            fillColor: "#f6ad55",
+            fillOpacity: 1
+          }}
+        />
+      ))}
+
+      <Polyline
+        positions={routePositions}
+        pathOptions={{
+          color: "#e53e3e",
+          weight: 5,
+          opacity: 0.95
+        }}
+      />
     </>
   );
 };
-
 
 // styles for tiploc markers
 const DEFAULT_STATION_STYLE: L.CircleMarkerOptions = { // default style for all stations
@@ -125,7 +199,6 @@ const SEARCHED_STATION_STYLE: L.CircleMarkerOptions = { // custom style for sear
   fillOpacity: 0.8,
   weight: 2
 };
-
 
 // layer to show tiploc stations, either all or just the searched station
 const TiplocLayer = ({ visible, searchedStation }: { visible: boolean, searchedStation?: string | null }) => {
@@ -184,34 +257,69 @@ const TiplocLayer = ({ visible, searchedStation }: { visible: boolean, searchedS
   return null;
 };
 
-
 // main map area component
-const MapArea = ({ targetView, selectedTrain = null, searchedStation }: MapAreaProps) => {
+const MapArea = ({
+  targetView,
+  selectedTrain,
+  searchedStation,
+  setRouteStops
+}: MapAreaProps) => {
+
   const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
   const [showTiplocs, setShowTiplocs] = useState(false);
-  const [isMapReady, setIsMapReady] = useState(false);
   const [resetTrigger, setResetTrigger] = useState(0);
-
-  // handle map reset by incrementing resetTrigger
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // function to trigger map reset by incrementing the resetTrigger state
   const handleReset = () => setResetTrigger(prev => prev + 1);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isLoading) { // map loading spinner
+    return (
+      <Box w="full" h="full" display="flex" alignItems="center" justifyContent="center">
+        <Spinner size="xl" />
+      </Box>
+    );
+  }
+
   return (
-    <Box w="full" h="full" position="relative" id="map-container" bg="gray.100">
+    <Box w="full" h="full" position="relative">
       <MapContainer
         center={UK_CENTER}
         zoom={DEFAULT_ZOOM}
         style={{ height: "100%", width: "100%" }}
-        scrollWheelZoom={true}
+        scrollWheelZoom
         zoomControl={false}
-        preferCanvas={true}
-        whenReady={() => setIsMapReady(true)}
+        preferCanvas
       >
-        <TileLayer key={activeLayer.name} attribution={activeLayer.attribution} url={activeLayer.url} />
+        <MapController
+          targetView={targetView || null}
+          selectedTrain={selectedTrain || null}
+          resetTrigger={resetTrigger}
+        />
 
-        <MapController targetView={targetView} selectedTrain={selectedTrain} resetTrigger={resetTrigger} />
+        <TileLayer
+          key={activeLayer.name}
+          attribution={activeLayer.attribution}
+          url={activeLayer.url}
+        />
 
-        <TiplocLayer visible={showTiplocs} searchedStation={searchedStation} />
-        <RouteLayer selectedTrain={selectedTrain} />
+        <TiplocLayer 
+          visible={showTiplocs} 
+          searchedStation={searchedStation} 
+        />
+
+        <RouteRenderer
+          selectedTrain={selectedTrain || null}
+          setRouteStops={setRouteStops}
+        />
 
         <MapControls
           currentLayer={activeLayer}
@@ -221,12 +329,6 @@ const MapArea = ({ targetView, selectedTrain = null, searchedStation }: MapAreaP
           onToggleTiplocs={() => setShowTiplocs(!showTiplocs)}
         />
       </MapContainer>
-
-      {!isMapReady && (
-        <Box position="absolute" inset={0} bg="whiteAlpha.900" zIndex={2000} display="flex" alignItems="center" justifyContent="center">
-          <Spinner size="xl" color="blue.500" thickness="4px" />
-        </Box>
-      )}
     </Box>
   );
 };

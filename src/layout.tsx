@@ -4,9 +4,10 @@ import Header from './components/layout/header';
 interface LayoutProps {
     sideContent: React.ReactNode;
     mapContent: React.ReactNode;
+    panelContent?: React.ReactNode;
 }
 
-const Layout = ({ sideContent, mapContent }: LayoutProps) => {
+const Layout = ({ sideContent, mapContent, panelContent }: LayoutProps) => {
     return (
         <Flex direction="column" h="100vh" w="full" overflow="hidden">
 
@@ -34,6 +35,9 @@ const Layout = ({ sideContent, mapContent }: LayoutProps) => {
                 <Box flex="1" position="relative">
                     {mapContent}
                 </Box>
+
+                {/* train detail panel (right side) */}
+                {panelContent && panelContent}
 
             </Flex>
         </Flex>

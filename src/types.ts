@@ -52,6 +52,9 @@ export interface Train {
   lastReportedDelay: number;
   lastReportedType: string;
   cancelled: boolean;
+
+  // schedule ID returned by the API for fetching full journey details
+  scheduleId?: number;
 }
 
 export interface TiplocLocation {
