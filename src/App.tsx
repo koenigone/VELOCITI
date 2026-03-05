@@ -2,8 +2,8 @@ import { useState } from 'react';
 import Layout from './layout';
 import Sidebar from './components/layout/sidebar';
 import MapArea from './components/map/mapArea';
+import TrainDetailPanel from './components/panels/trainDetailPanel';
 import type { MapTarget } from './components/map/mapArea';
-import type { Train } from './types';
 
 function App() 
 {
@@ -19,6 +19,7 @@ function App()
     setSelectedTrain(null);
     setRouteStops([]);
     setSearchedStation(stationCode); 
+    setShowDetailPanel(false);
     };
 
   const handleTrainSelect = (train: any) => 
