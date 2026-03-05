@@ -3,6 +3,7 @@ import Layout from './layout';
 import Sidebar from './components/layout/sidebar';
 import MapArea from './components/map/mapArea';
 import type { MapTarget } from './components/map/mapArea';
+import type { Train } from './types';
 
 function App() 
 {
@@ -10,6 +11,7 @@ function App()
   const [selectedTrain, setSelectedTrain] = useState<any | null>(null);
   const [, setRouteStops] = useState<any[]>([]); 
   const [searchedStation, setSearchedStation] = useState<string | null>(null);
+  const [showDetailPanel, setShowDetailPanel] = useState(false);
 
   const handleLocationSelect = (lat: number, lng: number, stationCode: string) => 
     {
@@ -22,6 +24,12 @@ function App()
   const handleTrainSelect = (train: any) => 
   {
     setSelectedTrain(train);
+    setShowDetailPanel(true);
+  };
+
+  const handleClosePanel = () => {
+    setShowDetailPanel(false);
+    setSelectedTrain(null);
   };
 
   return (
@@ -41,6 +49,15 @@ function App()
           searchedStation={searchedStation} 
           setRouteStops={setRouteStops} 
         />
+      }
+      panelContent=
+      {
+        showDetailPanel && selectedTrain ? (
+          <TrainDetailPanel
+            train={selectedTrain}
+            onClose={handleClosePanel}
+          />
+        ) : undefined
       }
     />
   );
