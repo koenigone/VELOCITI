@@ -2,17 +2,12 @@ import { useState } from 'react';
 import Layout from './layout';
 import Sidebar from './components/layout/sidebar';
 import MapArea from './components/map/mapArea';
-import TrainDetailPanel from './components/panels/trainDetailPanel';
 import type { MapTarget } from './components/map/mapArea';
 import type { Train } from './types';
 
 function App() 
 {
-function App() 
-{
   const [mapTarget, setMapTarget] = useState<MapTarget | null>(null);
-  const [selectedTrain, setSelectedTrain] = useState<any | null>(null);
-  const [, setRouteStops] = useState<any[]>([]); 
   const [selectedTrain, setSelectedTrain] = useState<any | null>(null);
   const [, setRouteStops] = useState<any[]>([]); 
   const [searchedStation, setSearchedStation] = useState<string | null>(null);
@@ -20,17 +15,12 @@ function App()
 
   const handleLocationSelect = (lat: number, lng: number, stationCode: string) => 
     {
-  const handleLocationSelect = (lat: number, lng: number, stationCode: string) => 
-    {
     setMapTarget({ lat, lng, zoom: 14 });
     setSelectedTrain(null);
     setRouteStops([]);
     setSearchedStation(stationCode); 
-    setShowDetailPanel(false);
     };
 
-  const handleTrainSelect = (train: any) => 
-  {
   const handleTrainSelect = (train: any) => 
   {
     setSelectedTrain(train);
@@ -46,15 +36,11 @@ function App()
     <Layout
       sideContent=
       {
-      sideContent=
-      {
         <Sidebar
           onLocationSelect={handleLocationSelect}
           onTrainSelect={handleTrainSelect}
         />
       }
-      mapContent=
-      {
       mapContent=
       {
         <MapArea

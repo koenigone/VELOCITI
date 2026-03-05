@@ -203,13 +203,12 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
       onLocationSelect(lat, lng, tiplocCode.toUpperCase());
 
-      // fetch train schedule (may return empty on staging API)
-      try {
-        const schedule = await trainApi.getSchedule(tiplocCode);
-        setTrains(schedule);
-      } catch {
-        setTrains([]);
-      }
+    try { // fetch location data for the searched tiploc
+      const location = await trainApi.getLocation(searchTerm);
+      const schedule = await trainApi.getSchedule(searchTerm);
+
+      onLocationSelect(location.latitude, location.longitude, searchTerm.toUpperCase());
+      setTrains(schedule);
 
     } catch (error: any) {
       toast({ // custom error toast
@@ -384,68 +383,21 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
       </Flex>
 
       {/* search area */}
-      <Box p="4" borderBottomWidth="1px" borderColor="gray.200" bg="white" shadow="sm" zIndex={20} position="relative">
+      <Box p="4" borderBottomWidth="1px" borderColor="gray.200" bg="white" shadow="sm" zIndex={10}>
+        <Text fontSize="xs" fontWeight="bold" color="gray.500" letterSpacing="wider" mb="2">
+          TRAIN SEARCH
+        </Text>
+
         <Flex gap={2}>
-          <Box flex={1} position="relative">
-            <InputGroup size="sm">
-              <InputLeftElement pointerEvents="none">
-                <FaSearch color="gray" fontSize="12px" />
-              </InputLeftElement>
-              <Input
-                ref={inputRef}
-                placeholder={searchMode === 'station' ? 'Search station (e.g. "Sheffield")' : 'Search by headcode (e.g. "1F45")'}
-                size="sm"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onFocus={() => { if (searchMode === 'station' && suggestions.length > 0) setShowSuggestions(true); }}
-                focusBorderColor="blue.500"
-                bg="gray.50"
-                pl="8"
-                pr={searchTerm ? "8" : "3"}
-                fontFamily={searchMode === 'train' ? "mono" : "inherit"}
-                textTransform={searchMode === 'train' ? "uppercase" : "none"}
-              />
-              {/* clear button inside input */}
-              {searchTerm && (
-                <Box position="absolute" right="8px" top="50%" transform="translateY(-50%)"
-                  cursor="pointer" zIndex={2} onClick={handleClear} color="gray.400"
-                  _hover={{ color: "gray.600" }} transition="color 0.15s"
-                >
-                  <FaTimes fontSize="10px" />
-                </Box>
-              )}
-            </InputGroup>
-
-            {/* autocomplete dropdown (station mode only) */}
-            {searchMode === 'station' && showSuggestions && (
-              <Box ref={suggestionsRef} position="absolute" top="100%" left={0} right={0} mt={1}
-                bg="white" border="1px solid" borderColor="gray.200" borderRadius="md"
-                shadow="xl" zIndex={100} maxH="320px" overflowY="auto"
-              >
-                <Text fontSize="2xs" fontWeight="bold" color="gray.400" px={3} pt={2} pb={1}
-                  letterSpacing="wider" textTransform="uppercase">
-                  Matching Stations
-                </Text>
-                {suggestions.map((tiploc, index) => (
-                  <Flex key={tiploc.Tiploc} px={3} py={2} cursor="pointer" alignItems="center" gap={3}
-                    bg={index === highlightedIndex ? "blue.50" : "transparent"}
-                    _hover={{ bg: "blue.50" }} transition="background 0.1s"
-                    onClick={() => handleSuggestionSelect(tiploc)}
-                  >
-                    <Box w="6px" h="6px" borderRadius="full" bg="blue.400" flexShrink={0} />
-                    <Box flex={1} minW={0}>
-                      <Text fontSize="sm" fontWeight="500" color="gray.700" isTruncated>{tiploc.Name}</Text>
-                    </Box>
-                    <Badge fontSize="0.6em" colorScheme="gray" variant="subtle" fontFamily="mono" px={1.5} borderRadius="sm" flexShrink={0}>
-                      {tiploc.Tiploc}
-                    </Badge>
-                  </Flex>
-                ))}
-              </Box>
-            )}
-          </Box>
-
+          <Input
+            placeholder="Enter TIPLOC (e.g. EUSTON)"
+            size="sm"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={handleKeyDown}
+            focusBorderColor="blue.500"
+            bg="gray.50"
+          />
           <Button size="sm" colorScheme="blue" onClick={handleSearch} isLoading={isLoading} disabled={!searchTerm}>
             <FaSearch />
           </Button>
@@ -548,24 +500,19 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
         {!isLoading && trains.length === 0 && (
           <Flex direction="column" align="center" justify="center" py={12} color="gray.400" mt={10}>
-            <Icon as={searchMode === 'station' ? FaMapMarkerAlt : MdTrain} boxSize={12} mb={4} opacity={0.2} />
+            <Icon as={MdTrain} boxSize={12} mb={4} opacity={0.2} />
             <Text fontSize="md" fontWeight="medium" textAlign="center" color="gray.500" mb={1}>
               {!searchTerm
-                ? (searchMode === 'station' ? "Search for a station" : "Search for a train")
+                ? "Search for a station"
                 : "No active trains found"}
             </Text>
             <Text fontSize="sm" textAlign="center" px={6}>
               {!searchTerm
-                ? (searchMode === 'station'
-                  ? 'Type a station name (e.g. "Sheffield", "Euston")'
-                  : 'Enter a train headcode (e.g. "1F45")')
-                : (searchMode === 'station'
-                  ? "We couldn't find any schedule for this TIPLOC. Please try another."
-                  : "No trains found with this headcode today.")}
+                ? "Enter a TIPLOC code above to view live departures"
+                : "We couldn't find any schedule for this TIPLOC. Please try another."}
             </Text>
           </Flex>
         )}
-
 
       </VStack>
     </Box>
