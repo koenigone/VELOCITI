@@ -8,12 +8,18 @@ import type { Train } from './types';
 
 function App() 
 {
+function App() 
+{
   const [mapTarget, setMapTarget] = useState<MapTarget | null>(null);
+  const [selectedTrain, setSelectedTrain] = useState<any | null>(null);
+  const [, setRouteStops] = useState<any[]>([]); 
   const [selectedTrain, setSelectedTrain] = useState<any | null>(null);
   const [, setRouteStops] = useState<any[]>([]); 
   const [searchedStation, setSearchedStation] = useState<string | null>(null);
   const [showDetailPanel, setShowDetailPanel] = useState(false);
 
+  const handleLocationSelect = (lat: number, lng: number, stationCode: string) => 
+    {
   const handleLocationSelect = (lat: number, lng: number, stationCode: string) => 
     {
     setMapTarget({ lat, lng, zoom: 14 });
@@ -23,6 +29,8 @@ function App()
     setShowDetailPanel(false);
     };
 
+  const handleTrainSelect = (train: any) => 
+  {
   const handleTrainSelect = (train: any) => 
   {
     setSelectedTrain(train);
@@ -38,11 +46,15 @@ function App()
     <Layout
       sideContent=
       {
+      sideContent=
+      {
         <Sidebar
           onLocationSelect={handleLocationSelect}
           onTrainSelect={handleTrainSelect}
         />
       }
+      mapContent=
+      {
       mapContent=
       {
         <MapArea

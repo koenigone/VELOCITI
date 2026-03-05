@@ -566,6 +566,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
           </Flex>
         )}
 
+
       </VStack>
     </Box>
   );
