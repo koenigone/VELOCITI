@@ -6,14 +6,12 @@ import {
 import { FaSearch, FaCircle, FaTimes, FaMapMarkerAlt } from 'react-icons/fa';
 import { MdTrain } from 'react-icons/md';
 import { trainApi } from '../../api/api';
+import { ALL_TIPLOCS } from '../../data/tiplocData';
+import { getTrainStatus, formatTime } from '../../utils/trainUtils';
 import type { Train, TiplocData } from '../../types';
 
-import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
-
-// load all TIPLOCs from the local JSON for client-side fuzzy search
-const ALL_TIPLOCS = (tiplocDataRaw as any).Tiplocs as TiplocData[];
 const MAX_SUGGESTIONS = 8; // autocomplete suggestions limit
-const DEBOUNCE_MS = 250;  // debounce delay for autocomplete input
+const DEBOUNCE_MS = 250;   // debounce delay for autocomplete input
 
 // the two search modes available in the sidebar
 type SearchMode = 'station' | 'train';
@@ -23,31 +21,6 @@ interface SidebarProps {
   onLocationSelect: (lat: number, lng: number, stationCode: string) => void;
   onTrainSelect: (train: Train) => void;
 }
-
-
-/* this function determines the status of a train based on its properties
-  and returns an object with the appropriate color, badge scheme, and label for display in the UI
-*/
-const getTrainStatus = (train: Train) => {
-  if (train.cancelled) return { color: "red.600", badgeScheme: "red", label: "CANCELLED" }; // when cancelled, overrides all other statuses
-  if (train.lastReportedType === "TERMINATED") return { color: "gray.500", badgeScheme: "gray", label: "TERMINATED" }; // terminated trains are not cancelled but have ended their journey early
-  if (train.lastReportedDelay > 4) return { color: "red.500", badgeScheme: "red", label: `${train.lastReportedDelay} MINS LATE` }; // late trains with delay greater than 4 mins
-  return { color: "green.500", badgeScheme: "green", label: "ON TIME" }; // default status for trains that are not cancelled, terminated, or late
-};
-
-
-/* format time from long string to HH:MM format
-  returns "--:--" if the input is invalid or missing
-*/
-const formatTime = (isoString?: string) => {
-  if (!isoString) return "--:--";
-
-  const date = new Date(isoString);
-  if (isNaN(date.getTime())) return "--:--";
-
-  // format time as HH:MM
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-};
 
 
 /**
@@ -62,7 +35,7 @@ const fuzzySearchTiplocs = (query: string): TiplocData[] => {
 
   const scored = ALL_TIPLOCS
     .filter(t => t.Latitude && t.Longitude)               // only entries with valid coordinates
-    .filter(t => !t.Tiploc.startsWith('ELOC'))             // exclude engineering locations
+    .filter(t => !t.Tiploc.startsWith('ELOC'))            // exclude engineering locations
     .map(t => {
       const name = t.Name.toLowerCase();
       const code = t.Tiploc.toLowerCase();
@@ -98,20 +71,19 @@ const fuzzySearchTiplocs = (query: string): TiplocData[] => {
 // main sidebar component
 const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
-  // ---- shared state ----
+  // shared state
   const [searchMode, setSearchMode] = useState<SearchMode>('station');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [trains, setTrains] = useState<Train[]>([]);
   const [selectedTrainId, setSelectedTrainId] = useState<string | null>(null);
 
-  // ---- station search state ----
+  // station search state
   const [activeStation, setActiveStation] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<TiplocData[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
-  // ---- train search state ----
   const [searchedHeadcode, setSearchedHeadcode] = useState<string | null>(null);
 
   // refs
@@ -138,8 +110,6 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     setHighlightedIndex(-1);
   };
 
-
-  // ---- Station Search: Autocomplete Logic ----
 
   /**
    * Debounced autocomplete: updates suggestion list as user types.
@@ -176,8 +146,6 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
   }, []);
 
 
-  // ---- Station Search: Execute ----
-
   // handle search for station and its schedule
   const executeStationSearch = useCallback(async (tiplocCode: string, stationName?: string) => {
     setIsLoading(true);       // show loading spinner
@@ -212,7 +180,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
       // fetch train schedule (may return empty on staging API)
       try {
-        const schedule = await trainApi.getSchedule(tiplocCode);
+        const schedule = await trainApi.getTrainsAtStation(tiplocCode);
         setTrains(schedule);
       } catch {
         setTrains([]);
@@ -243,8 +211,6 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
   };
 
 
-  // ---- Train Search: Execute ----
-
   /**
    * Executes train search by headcode.
    * Fetches all trains from EUSTON (primary data source on staging) and filters by headcode.
@@ -257,7 +223,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
     try {
       // fetch all trains from EUSTON and filter by headcode client-side
-      const allTrains = await trainApi.getSchedule('EUSTON');
+      const allTrains = await trainApi.getTrainsAtStation('EUSTON');
 
       const hc = headcode.toUpperCase();
       const seen = new Set<string>();
@@ -298,11 +264,10 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     } finally {
       setIsLoading(false);
     }
-  }, [onLocationSelect, onTrainSelect, toast]);
+  }, [onTrainSelect, toast]);
 
 
-  // ---- Unified Search Handler ----
-
+  // unified search handler
   const handleSearch = () => {
     if (!searchTerm.trim()) return;
 
@@ -386,7 +351,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
   return (
     <Box h="full" display="flex" flexDirection="column" bg="white" borderRight="1px" borderColor="gray.200">
 
-      {/* ---- Search Mode Tabs ---- */}
+      {/* search mode tabs */}
       <Flex borderBottomWidth="1px" borderColor="gray.200" bg="white">
         <SearchTab label="Station" icon={FaMapMarkerAlt} isActive={searchMode === 'station'} onClick={() => handleModeSwitch('station')} />
         <SearchTab label="Train" icon={MdTrain} isActive={searchMode === 'train'} onClick={() => handleModeSwitch('train')} />
@@ -426,7 +391,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
               )}
             </InputGroup>
 
-            {/* ---- Autocomplete Dropdown (station mode only) ---- */}
+            {/* auto complete dropdown */}
             {searchMode === 'station' && showSuggestions && (
               <Box ref={suggestionsRef} position="absolute" top="100%" left={0} right={0} mt={1}
                 bg="white" border="1px solid" borderColor="gray.200" borderRadius="md"
@@ -461,7 +426,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
         </Flex>
       </Box>
 
-      {/* ---- Results Context Label ---- */}
+      {/* results context */}
       {!isLoading && trains.length > 0 && (
         <Box px={4} py={2} borderBottomWidth="1px" borderColor="gray.100" bg="gray.50">
           <Text fontSize="xs" fontWeight="bold" color="gray.500">
@@ -581,7 +546,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 };
 
 
-// ---- Search Tab Button Sub-Component ----
+// search tab button
 const SearchTab = ({ label, icon, isActive, onClick }: { label: string; icon: React.ElementType; isActive: boolean; onClick: () => void }) => (
   <Box flex={1} py={2.5} textAlign="center" cursor="pointer" onClick={onClick}
     borderBottomWidth="2px" borderBottomColor={isActive ? "blue.500" : "transparent"}
@@ -596,6 +561,5 @@ const SearchTab = ({ label, icon, isActive, onClick }: { label: string; icon: Re
     </HStack>
   </Box>
 );
-
 
 export default Sidebar;
