@@ -6,45 +6,21 @@ import {
 import { FaSearch, FaCircle, FaTimes, FaMapMarkerAlt } from 'react-icons/fa';
 import { MdTrain } from 'react-icons/md';
 import { trainApi } from '../../api/api';
+import { ALL_TIPLOCS } from '../../data/tiplocData';
+import { getTrainStatus, formatTime } from '../../utils/trainUtils';
 import type { Train, TiplocData } from '../../types';
-import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
 
-const ALL_TIPLOCS = (tiplocDataRaw as any).Tiplocs as TiplocData[]; // load TIPLOC data from local JSON file for autocomplete
 const MAX_SUGGESTIONS = 8; // autocomplete suggestions limit
-const DEBOUNCE_MS = 250;  // debounce delay for autocomplete input
+const DEBOUNCE_MS = 250;   // debounce delay for autocomplete input
 
-// available search modes
+// the two search modes available in the sidebar
 type SearchMode = 'station' | 'train';
+
 
 interface SidebarProps {
   onLocationSelect: (lat: number, lng: number, stationCode: string) => void;
   onTrainSelect: (train: Train) => void;
 }
-
-
-/* this function determines the status of a train based on its properties
-  and returns an object with the appropriate color, badge scheme, and label for display in the UI
-*/
-const getTrainStatus = (train: Train) => {
-  if (train.cancelled) return { color: "red.600", badgeScheme: "red", label: "CANCELLED" }; // when cancelled, overrides all other statuses
-  if (train.lastReportedType === "TERMINATED") return { color: "gray.500", badgeScheme: "gray", label: "TERMINATED" }; // terminated trains are not cancelled but have ended their journey early
-  if (train.lastReportedDelay > 4) return { color: "red.500", badgeScheme: "red", label: `${train.lastReportedDelay} MINS LATE` }; // late trains with delay greater than 4 mins
-  return { color: "green.500", badgeScheme: "green", label: "ON TIME" }; // default status for trains that are not cancelled, terminated, or late
-};
-
-
-/* format time from long string to HH:MM format
-  returns "--:--" if the input is invalid or missing
-*/
-const formatTime = (isoString?: string) => {
-  if (!isoString) return "--:--";
-
-  const date = new Date(isoString);
-  if (isNaN(date.getTime())) return "--:--";
-
-  // format time as HH:MM
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-};
 
 
 /**
@@ -70,7 +46,7 @@ const fuzzySearchTiplocs = (query: string): TiplocData[] => {
       // starts-with match is next best
       else if (name.startsWith(q)) score = 80;
       else if (code.startsWith(q)) score = 70;
-      // word boundary match ("pancras" matches "london st pancras")
+      // word boundary match (e.g. "pancras" matches "london st pancras")
       else if (name.split(/\s+/).some(word => word.startsWith(q))) score = 60;
       // contains match
       else if (name.includes(q)) score = 40;
@@ -95,20 +71,19 @@ const fuzzySearchTiplocs = (query: string): TiplocData[] => {
 // main sidebar component
 const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
-  // ---- shared state ----
+  // shared state
   const [searchMode, setSearchMode] = useState<SearchMode>('station');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [trains, setTrains] = useState<Train[]>([]);
   const [selectedTrainId, setSelectedTrainId] = useState<string | null>(null);
 
-  // ---- station search state ----
+  // station search state
   const [activeStation, setActiveStation] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<TiplocData[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
-  // ---- train search state ----
   const [searchedHeadcode, setSearchedHeadcode] = useState<string | null>(null);
 
   // refs
@@ -135,11 +110,10 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     setHighlightedIndex(-1);
   };
 
-  // autocomplete logic 
 
   /**
-   * debounced autocomplete: updates suggestion list as user types.
-   * only active in station search mode.
+   * Debounced autocomplete: updates suggestion list as user types.
+   * Only active in station search mode.
    */
   useEffect(() => {
     if (searchMode !== 'station' || searchTerm.length < 2) {
@@ -170,6 +144,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
 
   // handle search for station and its schedule
   const executeStationSearch = useCallback(async (tiplocCode: string, stationName?: string) => {
@@ -203,12 +178,13 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
       onLocationSelect(lat, lng, tiplocCode.toUpperCase());
 
-    try { // fetch location data for the searched tiploc
-      const location = await trainApi.getLocation(searchTerm);
-      const schedule = await trainApi.getSchedule(searchTerm);
-
-      onLocationSelect(location.latitude, location.longitude, searchTerm.toUpperCase());
-      setTrains(schedule);
+      // fetch train schedule (may return empty on staging API)
+      try {
+        const schedule = await trainApi.getTrainsAtStation(tiplocCode);
+        setTrains(schedule);
+      } catch {
+        setTrains([]);
+      }
 
     } catch (error: any) {
       toast({ // custom error toast
@@ -234,11 +210,10 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     executeStationSearch(tiploc.Tiploc, tiploc.Name);
   };
 
-  // train search logic
 
   /**
-   * executes train search by headcode.
-   * fetches all trains from EUSTON (primary data source on staging) and filters by headcode.
+   * Executes train search by headcode.
+   * Fetches all trains from EUSTON (primary data source on staging) and filters by headcode.
    */
   const executeTrainSearch = useCallback(async (headcode: string) => {
     setIsLoading(true);
@@ -248,7 +223,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
     try {
       // fetch all trains from EUSTON and filter by headcode client-side
-      const allTrains = await trainApi.getSchedule('EUSTON');
+      const allTrains = await trainApi.getTrainsAtStation('EUSTON');
 
       const hc = headcode.toUpperCase();
       const seen = new Set<string>();
@@ -289,7 +264,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     } finally {
       setIsLoading(false);
     }
-  }, [onLocationSelect, onTrainSelect, toast]);
+  }, [onTrainSelect, toast]);
 
 
   // unified search handler
@@ -376,35 +351,82 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
   return (
     <Box h="full" display="flex" flexDirection="column" bg="white" borderRight="1px" borderColor="gray.200">
 
-      {/* search modes tabs */}
+      {/* search mode tabs */}
       <Flex borderBottomWidth="1px" borderColor="gray.200" bg="white">
         <SearchTab label="Station" icon={FaMapMarkerAlt} isActive={searchMode === 'station'} onClick={() => handleModeSwitch('station')} />
         <SearchTab label="Train" icon={MdTrain} isActive={searchMode === 'train'} onClick={() => handleModeSwitch('train')} />
       </Flex>
 
       {/* search area */}
-      <Box p="4" borderBottomWidth="1px" borderColor="gray.200" bg="white" shadow="sm" zIndex={10}>
-        <Text fontSize="xs" fontWeight="bold" color="gray.500" letterSpacing="wider" mb="2">
-          TRAIN SEARCH
-        </Text>
-
+      <Box p="4" borderBottomWidth="1px" borderColor="gray.200" bg="white" shadow="sm" zIndex={20} position="relative">
         <Flex gap={2}>
-          <Input
-            placeholder="Enter TIPLOC (e.g. EUSTON)"
-            size="sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyDown={handleKeyDown}
-            focusBorderColor="blue.500"
-            bg="gray.50"
-          />
+          <Box flex={1} position="relative">
+            <InputGroup size="sm">
+              <InputLeftElement pointerEvents="none">
+                <FaSearch color="gray" fontSize="12px" />
+              </InputLeftElement>
+              <Input
+                ref={inputRef}
+                placeholder={searchMode === 'station' ? 'Search station (e.g. "Sheffield")' : 'Search by headcode (e.g. "1F45")'}
+                size="sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onFocus={() => { if (searchMode === 'station' && suggestions.length > 0) setShowSuggestions(true); }}
+                focusBorderColor="blue.500"
+                bg="gray.50"
+                pl="8"
+                pr={searchTerm ? "8" : "3"}
+                fontFamily={searchMode === 'train' ? "mono" : "inherit"}
+                textTransform={searchMode === 'train' ? "uppercase" : "none"}
+              />
+              {/* clear button inside input */}
+              {searchTerm && (
+                <Box position="absolute" right="8px" top="50%" transform="translateY(-50%)"
+                  cursor="pointer" zIndex={2} onClick={handleClear} color="gray.400"
+                  _hover={{ color: "gray.600" }} transition="color 0.15s"
+                >
+                  <FaTimes fontSize="10px" />
+                </Box>
+              )}
+            </InputGroup>
+
+            {/* auto complete dropdown */}
+            {searchMode === 'station' && showSuggestions && (
+              <Box ref={suggestionsRef} position="absolute" top="100%" left={0} right={0} mt={1}
+                bg="white" border="1px solid" borderColor="gray.200" borderRadius="md"
+                shadow="xl" zIndex={100} maxH="320px" overflowY="auto"
+              >
+                <Text fontSize="2xs" fontWeight="bold" color="gray.400" px={3} pt={2} pb={1}
+                  letterSpacing="wider" textTransform="uppercase">
+                  Matching Stations
+                </Text>
+                {suggestions.map((tiploc, index) => (
+                  <Flex key={tiploc.Tiploc} px={3} py={2} cursor="pointer" alignItems="center" gap={3}
+                    bg={index === highlightedIndex ? "blue.50" : "transparent"}
+                    _hover={{ bg: "blue.50" }} transition="background 0.1s"
+                    onClick={() => handleSuggestionSelect(tiploc)}
+                  >
+                    <Box w="6px" h="6px" borderRadius="full" bg="blue.400" flexShrink={0} />
+                    <Box flex={1} minW={0}>
+                      <Text fontSize="sm" fontWeight="500" color="gray.700" isTruncated>{tiploc.Name}</Text>
+                    </Box>
+                    <Badge fontSize="0.6em" colorScheme="gray" variant="subtle" fontFamily="mono" px={1.5} borderRadius="sm" flexShrink={0}>
+                      {tiploc.Tiploc}
+                    </Badge>
+                  </Flex>
+                ))}
+              </Box>
+            )}
+          </Box>
+
           <Button size="sm" colorScheme="blue" onClick={handleSearch} isLoading={isLoading} disabled={!searchTerm}>
             <FaSearch />
           </Button>
         </Flex>
       </Box>
 
-      {/* results context label */}
+      {/* results context */}
       {!isLoading && trains.length > 0 && (
         <Box px={4} py={2} borderBottomWidth="1px" borderColor="gray.100" bg="gray.50">
           <Text fontSize="xs" fontWeight="bold" color="gray.500">
@@ -500,16 +522,20 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
         {!isLoading && trains.length === 0 && (
           <Flex direction="column" align="center" justify="center" py={12} color="gray.400" mt={10}>
-            <Icon as={MdTrain} boxSize={12} mb={4} opacity={0.2} />
+            <Icon as={searchMode === 'station' ? FaMapMarkerAlt : MdTrain} boxSize={12} mb={4} opacity={0.2} />
             <Text fontSize="md" fontWeight="medium" textAlign="center" color="gray.500" mb={1}>
               {!searchTerm
-                ? "Search for a station"
+                ? (searchMode === 'station' ? "Search for a station" : "Search for a train")
                 : "No active trains found"}
             </Text>
             <Text fontSize="sm" textAlign="center" px={6}>
               {!searchTerm
-                ? "Enter a TIPLOC code above to view live departures"
-                : "We couldn't find any schedule for this TIPLOC. Please try another."}
+                ? (searchMode === 'station'
+                  ? 'Type a station name (e.g. "Sheffield", "Euston")'
+                  : 'Enter a train headcode (e.g. "1F45")')
+                : (searchMode === 'station'
+                  ? "We couldn't find any schedule for this TIPLOC. Please try another."
+                  : "No trains found with this headcode today.")}
             </Text>
           </Flex>
         )}
@@ -520,7 +546,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 };
 
 
-// search tab button component
+// search tab button
 const SearchTab = ({ label, icon, isActive, onClick }: { label: string; icon: React.ElementType; isActive: boolean; onClick: () => void }) => (
   <Box flex={1} py={2.5} textAlign="center" cursor="pointer" onClick={onClick}
     borderBottomWidth="2px" borderBottomColor={isActive ? "blue.500" : "transparent"}

@@ -2,17 +2,17 @@ import 'leaflet/dist/leaflet.css';
 import { useState, useEffect, useRef } from 'react';
 import { Box, Spinner } from '@chakra-ui/react';
 
-import { MapContainer, TileLayer, useMap, Polyline, CircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, useMap, Polyline, CircleMarker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 
-import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
-import type { TiplocData } from '../../types';
+import { ALL_TIPLOCS, findTiploc } from '../../data/tiplocData';
+import { trainApi } from '../../api/api';
+import type { TiplocData, Train, ScheduleStop } from '../../types';
 import MapControls, { MAP_LAYERS } from './mapControls';
 
 // configs
 const UK_CENTER: [number, number] = [54.5, -2.5];
 const DEFAULT_ZOOM = 6;
-const ALL_TIPLOCS = (tiplocDataRaw as any).Tiplocs as TiplocData[];
 
 
 // interfaces and props
@@ -24,24 +24,18 @@ export interface MapTarget {
 
 interface MapAreaProps {
   targetView?: MapTarget | null;
-  selectedTrain?: any | null;
+  selectedTrain?: Train | null;
   searchedStation?: string | null;
-  setRouteStops: (stops: any[]) => void;
 }
 
 interface MapControllerProps {
   targetView?: MapTarget | null;
-  selectedTrain?: any | null;
   resetTrigger: number;
 }
 
 
-// handles map movements based on the selected station (tiploc), train and reset map to default view
-const MapController = ({
-  targetView,
-  selectedTrain,
-  resetTrigger
-}: MapControllerProps) => {
+// handles map movements based on the selected station (tiploc) and reset map to default view
+const MapController = ({ targetView, resetTrigger }: MapControllerProps) => {
   const map = useMap();
 
   // when targetView changes, fly to new location with animation
@@ -50,23 +44,6 @@ const MapController = ({
       map.flyTo([targetView.lat, targetView.lng], targetView.zoom || 14);
     }
   }, [targetView, map]);
-
-  // when selectedTrain changes, find the origin station's location and fly to it
-  useEffect(() => {
-    if (!selectedTrain) return;
-
-    const foundLocation = ALL_TIPLOCS.find(
-      t => t.Tiploc === selectedTrain.originTiploc
-    );
-
-    // if location is found and has valid coordinates, fly to it with animation
-    if (foundLocation?.Latitude && foundLocation?.Longitude) {
-      map.flyTo(
-        [foundLocation.Latitude, foundLocation.Longitude],
-        15
-      );
-    }
-  }, [selectedTrain, map]);
 
   // when resetTrigger is clicked, fly back to default UK view with animation
   useEffect(() => {
@@ -79,109 +56,134 @@ const MapController = ({
 };
 
 
-// draw the route of the selected train by simulating a path between origin and destination
-const RouteRenderer = ({ selectedTrain, setRouteStops}:
-  { selectedTrain: any | null; setRouteStops: (stops: any[]) => void;
-}) => {
-
+// draws the actual scheduled route for a selected train using the schedule API
+const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train | null }) => {
   const map = useMap();
-  const [routePositions, setRoutePositions] = useState<[number, number][]>([]);
+  const [scheduleStops, setScheduleStops] = useState<ScheduleStop[]>([]);
 
-  // when selectedTrain changes, calculate a simulated route between
-  // origin and destination and update route positions and stops
+  // when selectedTrain changes, fetch its full scheduled route from the API
   useEffect(() => {
     if (!selectedTrain) {
-      setRoutePositions([]);
-      setRouteStops([]);
+      setScheduleStops([]);
       return;
     }
 
-    // find the origin and destination tiploc data based on the selected train's
-    // origin and destination tiplocs
-    const origin = ALL_TIPLOCS.find(
-      t => t.Tiploc === selectedTrain.originTiploc
-    );
+    let cancelled = false;
 
-    const destination = ALL_TIPLOCS.find(
-      t => t.Tiploc === selectedTrain.destinationTiploc
-    );
+    const fetchRoute = async () => {
+      try {
+        // fetch the real scheduled route with lat/lng for each timing point
+        const stops = await trainApi.getTrainSchedule(
+          selectedTrain.activationId,
+          selectedTrain.scheduleId
+        );
 
-    // if either origin or destination is not found or has invalid coordinates, exit early
-    if (!origin || !destination) return;
+        if (cancelled) return;
 
-    // create a simple simulated route by interpolating points between origin and destination
-    const start: [number, number] = [origin.Latitude, origin.Longitude];
-    const end: [number, number] = [destination.Latitude, destination.Longitude];
+        // filter out stops with invalid coordinates
+        const validStops = stops.filter(
+          s => s.latLong?.latitude && s.latLong?.longitude
+        );
 
-    const generateInterpolatedRoute = (
-      start: [number, number],
-      end: [number, number],
-      segments: number
-    ) => {
-      const points: [number, number][] = [];
-      for (let i = 0; i <= segments; i++) { // include both start and end points
-        const lat = start[0] + ((end[0] - start[0]) * i) / segments; // linear interpolation for latitude
-        const lng = start[1] + ((end[1] - start[1]) * i) / segments; // linear interpolation for longitude
-        points.push([lat, lng]); // add the interpolated point to the route
+        setScheduleStops(validStops);
+
+        // fit map bounds to the route if we have points
+        if (validStops.length >= 2) {
+          const bounds = L.latLngBounds(
+            validStops.map(s => [s.latLong.latitude, s.latLong.longitude] as [number, number])
+          );
+          map.fitBounds(bounds, { padding: [50, 50] });
+        }
+
+      } catch (err) {
+        console.warn('[Velociti] Failed to fetch train schedule route:', err);
+
+        // fallback: draw a straight line between origin and destination using local TIPLOC data
+        const origin = findTiploc(selectedTrain.originTiploc);
+        const destination = findTiploc(selectedTrain.destinationTiploc);
+
+        if (!cancelled && origin?.Latitude && destination?.Latitude) {
+          setScheduleStops([
+            {
+              tiploc: origin.Tiploc,
+              location: origin.Name,
+              latLong: { latitude: origin.Latitude, longitude: origin.Longitude },
+              departure: ''
+            },
+            {
+              tiploc: destination.Tiploc,
+              location: destination.Name,
+              latLong: { latitude: destination.Latitude, longitude: destination.Longitude },
+              arrival: ''
+            }
+          ]);
+
+          const bounds = L.latLngBounds([
+            [origin.Latitude, origin.Longitude],
+            [destination.Latitude, destination.Longitude]
+          ]);
+          map.fitBounds(bounds, { padding: [50, 50] });
+        }
       }
-      return points;
     };
 
-    const simulatedRoute = generateInterpolatedRoute(start, end, 12);
-    setRoutePositions(simulatedRoute); // update state with the new route positions
+    fetchRoute();
+    return () => { cancelled = true; };
+  }, [selectedTrain, map]);
 
-    // create stop details for the route stops based on the simulated route and selected train's origin/destination
-    const stopDetails = simulatedRoute.map((_, index) => ({
-      name:
-        index === 0
-          ? selectedTrain.originLocation
-          : index === simulatedRoute.length - 1
-          ? selectedTrain.destinationLocation
-          : `Intermediate Stop ${index}`,
-      type:
-        index === 0
-          ? "ORIGIN"
-          : index === simulatedRoute.length - 1
-          ? "DESTINATION"
-          : "INTERMEDIATE"
-    }));
+  if (scheduleStops.length < 2) return null;
 
-    setRouteStops(stopDetails); // update the route stops
-
-    // fit the map bounds to the simulated route with some padding for better visibility
-    const bounds = L.latLngBounds(simulatedRoute);
-    map.fitBounds(bounds, { padding: [50, 50] });
-
-  }, [selectedTrain, map, setRouteStops]);
-
-  if (routePositions.length < 2) return null; // need at least 2 points to draw a route
+  // build positions array for the polyline
+  const positions: [number, number][] = scheduleStops.map(
+    s => [s.latLong.latitude, s.latLong.longitude]
+  );
 
   return (
     <>
-      {routePositions.map((pos, index) => (
-        <CircleMarker
-          key={index}
-          center={pos}
-          radius={5}
-          pathOptions={{
-            color: "#f6ad55",
-            fillColor: "#f6ad55",
-            fillOpacity: 1
-          }}
-        />
-      ))}
-
+      {/* route line connecting all stops */}
       <Polyline
-        positions={routePositions}
+        positions={positions}
         pathOptions={{
           color: "#e53e3e",
-          weight: 5,
-          opacity: 0.95
+          weight: 4,
+          opacity: 0.85
         }}
       />
+
+      {/* stop markers along the route */}
+      {scheduleStops.map((stop, index) => {
+        const isFirst = index === 0;
+        const isLast = index === scheduleStops.length - 1;
+        const isPass = !!stop.pass;
+
+        return (
+          <CircleMarker
+            key={`${stop.tiploc}-${index}`}
+            center={[stop.latLong.latitude, stop.latLong.longitude]}
+            radius={isFirst || isLast ? 6 : isPass ? 3 : 5}
+            pathOptions={{
+              color: isFirst ? "#38a169" : isLast ? "#e53e3e" : isPass ? "#90cdf4" : "#f6ad55",
+              fillColor: isFirst ? "#48bb78" : isLast ? "#fc8181" : isPass ? "#bee3f8" : "#fbd38d",
+              fillOpacity: 1,
+              weight: isFirst || isLast ? 2 : 1
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -8]}>
+              <div style={{ fontFamily: "system-ui", fontSize: "12px" }}>
+                <strong>{stop.location}</strong><br />
+                <small style={{ color: "#718096" }}>{stop.tiploc}</small>
+                {stop.departure && <><br /><small>Depart: {stop.departure}</small></>}
+                {stop.arrival && <><br /><small>Arrive: {stop.arrival}</small></>}
+                {stop.pass && <><br /><small>Pass: {stop.pass}</small></>}
+              </div>
+            </Tooltip>
+          </CircleMarker>
+        );
+      })}
     </>
   );
 };
+
 
 // styles for tiploc markers
 const DEFAULT_STATION_STYLE: L.CircleMarkerOptions = { // default style for all stations
@@ -262,7 +264,6 @@ const MapArea = ({
   targetView,
   selectedTrain,
   searchedStation,
-  setRouteStops
 }: MapAreaProps) => {
 
   const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
@@ -301,7 +302,6 @@ const MapArea = ({
       >
         <MapController
           targetView={targetView || null}
-          selectedTrain={selectedTrain || null}
           resetTrigger={resetTrigger}
         />
 
@@ -316,10 +316,7 @@ const MapArea = ({
           searchedStation={searchedStation} 
         />
 
-        <RouteRenderer
-          selectedTrain={selectedTrain || null}
-          setRouteStops={setRouteStops}
-        />
+        <RouteRenderer selectedTrain={selectedTrain || null} />
 
         <MapControls
           currentLayer={activeLayer}
