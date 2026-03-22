@@ -2,7 +2,15 @@ import type { TiplocData } from '../types';
 import tiplocDataRaw from './TiplocPublicExport_2025-12-01_094655.json';
 
 // single shared reference to all TIPLOC data — imported once, used everywhere
-export const ALL_TIPLOCS = (tiplocDataRaw as any).Tiplocs as TiplocData[];
+const tiplocExport = tiplocDataRaw as { Tiplocs: TiplocData[] };
+export const ALL_TIPLOCS = tiplocExport.Tiplocs;
+
+// passenger station TIPLOCs used for nationwide headcode searching
+export const SEARCHABLE_STATION_TIPLOCS = ALL_TIPLOCS
+  .filter(t => t.Latitude && t.Longitude)
+  .filter(t => !t.Tiploc.startsWith('ELOC'))
+  .filter(t => !!t.Details?.CRS)
+  .map(t => t.Tiploc);
 
 // lookup helper: find a TIPLOC's display name from the local dataset
 export const getTiplocName = (code: string): string => {

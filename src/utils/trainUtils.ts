@@ -34,7 +34,21 @@ export const formatTime = (isoString?: string | null): string => {
    used for schedule API responses which return times as "HHmm"
 */
 export const formatScheduleTime = (timeStr?: string | null): string => {
-  if (!timeStr || timeStr.length < 3) return "--:--";
+  if (!timeStr) return "--:--";
+
+  // fallback timeline entries can contain full ISO datetimes instead of HHmm strings
+  if (timeStr.includes('T')) {
+    return formatTime(timeStr);
+  }
+
+  if (timeStr.includes(':')) {
+    const parts = timeStr.split(':');
+    if (parts.length >= 2) {
+      return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+    }
+  }
+
+  if (timeStr.length < 3) return "--:--";
 
   // pad to 4 digits if needed (e.g. "933" -> "0933")
   const padded = timeStr.padStart(4, '0');

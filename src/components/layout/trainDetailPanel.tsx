@@ -85,6 +85,16 @@ const buildTimeline = (
 };
 
 
+// gets a safe message from an unknown error object
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
+
 // main train detail panel component
 const TrainDetailPanel = ({ train, onClose }: TrainDetailPanelProps) => {
   const [timeline, setTimeline] = useState<TimelineStop[]>([]);
@@ -114,10 +124,10 @@ const TrainDetailPanel = ({ train, onClose }: TrainDetailPanelProps) => {
 
         const built = buildTimeline(schedule, movements, train);
         setTimeline(built);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (cancelled) return;
         console.warn('[Velociti Detail] Failed to fetch journey data:', err);
-        setError(err.message || "Failed to load journey details");
+        setError(getErrorMessage(err, "Failed to load journey details"));
 
         // use fallback minimal timeline
         setTimeline(buildTimeline([], [], train));
