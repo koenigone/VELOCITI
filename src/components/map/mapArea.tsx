@@ -8,7 +8,8 @@ import L from 'leaflet';
 import { ALL_TIPLOCS, findTiploc } from '../../data/tiplocData';
 import { trainApi } from '../../api/api';
 import type { TiplocData, Train, ScheduleStop } from '../../types';
-import MapControls, { MAP_LAYERS } from './mapControls';
+import MapControls from './mapControls';
+import { MAP_LAYERS } from './mapLayers';
 
 // configs
 const UK_CENTER: [number, number] = [54.5, -2.5];
@@ -26,6 +27,7 @@ interface MapAreaProps {
   targetView?: MapTarget | null;
   selectedTrain?: Train | null;
   searchedStation?: string | null;
+  onStationSelect?: (station: TiplocData) => void;
 }
 
 interface MapControllerProps {
@@ -57,17 +59,12 @@ const MapController = ({ targetView, resetTrigger }: MapControllerProps) => {
 
 
 // draws the actual scheduled route for a selected train using the schedule API
-const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train | null }) => {
+const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
   const map = useMap();
   const [scheduleStops, setScheduleStops] = useState<ScheduleStop[]>([]);
 
   // when selectedTrain changes, fetch its full scheduled route from the API
   useEffect(() => {
-    if (!selectedTrain) {
-      setScheduleStops([]);
-      return;
-    }
-
     let cancelled = false;
 
     const fetchRoute = async () => {
@@ -203,7 +200,15 @@ const SEARCHED_STATION_STYLE: L.CircleMarkerOptions = { // custom style for sear
 };
 
 // layer to show tiploc stations, either all or just the searched station
-const TiplocLayer = ({ visible, searchedStation }: { visible: boolean, searchedStation?: string | null }) => {
+const TiplocLayer = ({
+  visible,
+  searchedStation,
+  onStationSelect
+}: {
+  visible: boolean;
+  searchedStation?: string | null;
+  onStationSelect?: (station: TiplocData) => void;
+}) => {
   const map = useMap();
   const layerRef = useRef<L.LayerGroup | null>(null);
 
@@ -239,12 +244,15 @@ const TiplocLayer = ({ visible, searchedStation }: { visible: boolean, searchedS
       const baseStyle = isSearchedTarget ? SEARCHED_STATION_STYLE : DEFAULT_STATION_STYLE;
 
       return L.circleMarker([t.Latitude, t.Longitude], { ...baseStyle, renderer: canvasRenderer })
-        .bindPopup(`
+        .bindTooltip(`
         <div style="font-family: system-ui;">
           <strong>${t.Name}</strong><br/>
           <small>TIPLOC: ${t.Tiploc}</small>
         </div>
-      `);
+      `)
+        .on('click', () => {
+          onStationSelect?.(t);
+        });
     }).filter((m): m is L.CircleMarker => m !== null);
 
     // create a layer group for the markers and add to map
@@ -254,7 +262,7 @@ const TiplocLayer = ({ visible, searchedStation }: { visible: boolean, searchedS
     return () => { // cleanup function to remove layer when unmounting or before next render
       if (layerRef.current) map.removeLayer(layerRef.current);
     };
-  }, [map, visible, searchedStation]);
+  }, [map, visible, searchedStation, onStationSelect]);
 
   return null;
 };
@@ -264,6 +272,7 @@ const MapArea = ({
   targetView,
   selectedTrain,
   searchedStation,
+  onStationSelect,
 }: MapAreaProps) => {
 
   const [activeLayer, setActiveLayer] = useState(MAP_LAYERS.standard);
@@ -313,10 +322,11 @@ const MapArea = ({
 
         <TiplocLayer 
           visible={showTiplocs} 
-          searchedStation={searchedStation} 
+          searchedStation={searchedStation}
+          onStationSelect={onStationSelect}
         />
 
-        <RouteRenderer selectedTrain={selectedTrain || null} />
+        {selectedTrain && <RouteRenderer key={selectedTrain.trainId} selectedTrain={selectedTrain} />}
 
         <MapControls
           currentLayer={activeLayer}

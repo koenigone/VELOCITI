@@ -21,6 +21,18 @@ const handleResponse = async (response: Response, context: string) => {
 };
 
 
+// gets today's date range in the format required by the train endpoints
+const getTodayRange = () => {
+  const today = new Date();
+  const dateStr = today.toISOString().split('T')[0];
+
+  return {
+    startStr: `${dateStr} 00:00:00`,
+    endStr: `${dateStr} 23:59:59`
+  };
+};
+
+
 // main API object with methods for all endpoints
 export const trainApi = {
 
@@ -53,14 +65,13 @@ export const trainApi = {
 
 
   // ---- GET /api/trains/tiploc/{tiplocs}/{startDateTime}/{endDateTime} ----
-  // fetches train data for given TIPLOCs within today's date range
-  getTrainsAtStation: async (tiploc: string): Promise<Train[]> => {
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0];
-    const startStr = `${dateStr} 00:00:00`;
-    const endStr = `${dateStr} 23:59:59`;
+  // fetches train data for one or more TIPLOCs within today's date range
+  getTrainsAtTiplocs: async (tiplocs: string[]): Promise<Train[]> => {
+    const uniqueTiplocs = [...new Set(tiplocs.map(t => t.toUpperCase().trim()).filter(Boolean))];
+    if (!uniqueTiplocs.length) return [];
 
-    const url = `${API_BASE}/trains/tiploc/${tiploc.toUpperCase()}/${encodeURIComponent(startStr)}/${encodeURIComponent(endStr)}`;
+    const { startStr, endStr } = getTodayRange();
+    const url = `${API_BASE}/trains/tiploc/${uniqueTiplocs.join(',')}/${encodeURIComponent(startStr)}/${encodeURIComponent(endStr)}`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -69,6 +80,13 @@ export const trainApi = {
 
     const data = await handleResponse(response, "Station schedule fetch failed");
     return Array.isArray(data) ? data : [];
+  },
+
+
+  // ---- GET /api/trains/tiploc/{tiplocs}/{startDateTime}/{endDateTime} ----
+  // fetches train data for a single TIPLOC within today's date range
+  getTrainsAtStation: async (tiploc: string): Promise<Train[]> => {
+    return trainApi.getTrainsAtTiplocs([tiploc]);
   },
 
 

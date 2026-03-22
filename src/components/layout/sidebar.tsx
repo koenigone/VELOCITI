@@ -6,12 +6,14 @@ import {
 import { FaSearch, FaCircle, FaTimes, FaMapMarkerAlt } from 'react-icons/fa';
 import { MdTrain } from 'react-icons/md';
 import { trainApi } from '../../api/api';
-import { ALL_TIPLOCS } from '../../data/tiplocData';
+import { ALL_TIPLOCS, SEARCHABLE_STATION_TIPLOCS } from '../../data/tiplocData';
 import { getTrainStatus, formatTime } from '../../utils/trainUtils';
 import type { Train, TiplocData } from '../../types';
 
 const MAX_SUGGESTIONS = 8; // autocomplete suggestions limit
 const DEBOUNCE_MS = 250;   // debounce delay for autocomplete input
+const HEADCODE_CHUNK_SIZE = 75; // tiploc chunk size for nationwide headcode search
+const HEADCODE_BATCH_SIZE = 4;  // concurrent chunk requests during headcode search
 
 // the two search modes available in the sidebar
 type SearchMode = 'station' | 'train';
@@ -65,6 +67,41 @@ const fuzzySearchTiplocs = (query: string): TiplocData[] => {
     .map(item => item.tiploc);
 
   return scored;
+};
+
+
+// splits a large list into smaller arrays for batched API requests
+const chunkArray = <T,>(items: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+
+  return chunks;
+};
+
+
+// sorts train results so exact headcode matches appear first, then by departure time
+const sortHeadcodeResults = (a: Train, b: Train, headcode: string) => {
+  const aExact = a.headCode?.toUpperCase() === headcode ? 1 : 0;
+  const bExact = b.headCode?.toUpperCase() === headcode ? 1 : 0;
+
+  if (aExact !== bExact) {
+    return bExact - aExact;
+  }
+
+  return (a.scheduledDeparture || '').localeCompare(b.scheduledDeparture || '');
+};
+
+
+// gets a safe message from an unknown error object
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
 };
 
 
@@ -186,10 +223,10 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
         setTrains([]);
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({ // custom error toast
         title: "Search failed",
-        description: error.message || "Could not find station.",
+        description: getErrorMessage(error, "Could not find station."),
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -212,8 +249,8 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
 
   /**
-   * Executes train search by headcode.
-   * Fetches all trains from EUSTON (primary data source on staging) and filters by headcode.
+   * Executes nationwide headcode search by scanning batched passenger-station TIPLOCs.
+   * Results are deduplicated by train id and sorted with exact matches first.
    */
   const executeTrainSearch = useCallback(async (headcode: string) => {
     setIsLoading(true);
@@ -222,17 +259,29 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     setSearchedHeadcode(headcode.toUpperCase());
 
     try {
-      // fetch all trains from EUSTON and filter by headcode client-side
-      const allTrains = await trainApi.getTrainsAtStation('EUSTON');
-
       const hc = headcode.toUpperCase();
-      const seen = new Set<string>();
-      const matches = allTrains.filter(train => {
-        if (!train.headCode?.toUpperCase().includes(hc)) return false;
-        if (seen.has(train.trainId)) return false;
-        seen.add(train.trainId);
-        return true;
-      });
+      const stationChunks = chunkArray(SEARCHABLE_STATION_TIPLOCS, HEADCODE_CHUNK_SIZE);
+      const matchesById = new Map<string, Train>();
+
+      for (let i = 0; i < stationChunks.length; i += HEADCODE_BATCH_SIZE) {
+        const batch = stationChunks.slice(i, i + HEADCODE_BATCH_SIZE);
+        const results = await Promise.allSettled(
+          batch.map(chunk => trainApi.getTrainsAtTiplocs(chunk))
+        );
+
+        results.forEach((result) => {
+          if (result.status !== 'fulfilled') return;
+
+          result.value.forEach((train) => {
+            if (!train.headCode?.toUpperCase().includes(hc)) return;
+            if (!matchesById.has(train.trainId)) {
+              matchesById.set(train.trainId, train);
+            }
+          });
+        });
+      }
+
+      const matches = Array.from(matchesById.values()).sort((a, b) => sortHeadcodeResults(a, b, hc));
 
       if (matches.length === 0) {
         toast({
@@ -253,10 +302,10 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
         onTrainSelect(train);
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Search failed",
-        description: error.message || "Could not search for train.",
+        description: getErrorMessage(error, "Could not search for train."),
         status: "error",
         duration: 3000,
         isClosable: true,
