@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import Layout from './layout';
 import Sidebar from './components/layout/sidebar';
 import MapArea from './components/map/mapArea';
 import TrainDetailPanel from './components/layout/trainDetailPanel';
 import StationDetailPanel from './components/layout/stationDetailPanel';
+import useLiveSelectedTrain from './hooks/useLiveSelectedTrain';
 import type { MapTarget } from './components/map/mapArea';
 import type { Train, TiplocData } from './types';
 
@@ -12,6 +13,18 @@ function App() {
   const [selectedTrain, setSelectedTrain] = useState<Train | null>(null);
   const [selectedStation, setSelectedStation] = useState<TiplocData | null>(null);
   const [searchedStation, setSearchedStation] = useState<string | null>(null);
+
+  const handleLiveTrainUpdate = useCallback((updatedTrain: Train) => {
+    setSelectedTrain(current => {
+      if (!current || current.trainId !== updatedTrain.trainId) {
+        return current;
+      }
+
+      return updatedTrain;
+    });
+  }, []);
+
+  const { liveStatus } = useLiveSelectedTrain(selectedTrain, handleLiveTrainUpdate);
 
   // called when user selects a station from the sidebar search
   const handleLocationSelect = (lat: number, lng: number, stationCode: string) => {
@@ -69,6 +82,7 @@ function App() {
         selectedTrain ? (
           <TrainDetailPanel
             train={selectedTrain}
+            liveStatus={liveStatus}
             onClose={handleCloseTrainPanel}
           />
         ) : selectedStation ? (

@@ -61,6 +61,8 @@ export interface Train {
   lastReportedLocation?: string;
   lastReportedDelay: number;
   lastReportedType: string;
+  lastReportedLatitude?: number;
+  lastReportedLongitude?: number;
   cancelled: boolean;
 
   // IDs needed for fetching full schedule and movement data

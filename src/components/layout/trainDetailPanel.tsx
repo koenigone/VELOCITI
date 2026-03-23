@@ -9,12 +9,18 @@ import { trainApi } from '../../api/api';
 import { getTiplocName } from '../../data/tiplocData';
 import { getTrainStatus, formatScheduleTime } from '../../utils/trainUtils';
 import type { Train, TimelineStop, ScheduleStop, MovementEvent } from '../../types';
+import type { LiveTrackingStatus } from '../../hooks/useLiveSelectedTrain';
 
 
 interface TrainDetailPanelProps {
   train: Train;
+  liveStatus: LiveTrackingStatus;
   onClose: () => void;
 }
+
+
+// normalises location strings so movement events can match schedule stops more reliably
+const normaliseLocation = (value = '') => value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 
 /* builds the timeline by merging schedule stops with movement events
@@ -58,7 +64,7 @@ const buildTimeline = (
   // index movement events by location name (uppercased) for fast lookup
   const movementMap = new Map<string, MovementEvent>();
   for (const m of movements) {
-    movementMap.set(m.location.toUpperCase(), m);
+    movementMap.set(normaliseLocation(m.location), m);
   }
 
   // map each schedule stop to a timeline entry, enriching with movement data where available
@@ -68,7 +74,7 @@ const buildTimeline = (
     const scheduledTime = stop.departure || stop.arrival || stop.pass || null;
 
     // try to match this stop to a movement event by location name
-    const movement = movementMap.get(stop.location.toUpperCase());
+    const movement = movementMap.get(normaliseLocation(stop.location));
 
     return {
       tiploc: stop.tiploc,
@@ -95,13 +101,35 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 };
 
 
+// returns a small live badge config for the current socket status
+const getLiveBadge = (status: LiveTrackingStatus) => {
+  switch (status) {
+    case 'live':
+      return { scheme: 'green', label: 'LIVE' };
+    case 'connecting':
+      return { scheme: 'blue', label: 'CONNECTING' };
+    case 'reconnecting':
+      return { scheme: 'orange', label: 'RECONNECTING' };
+    case 'disconnected':
+      return { scheme: 'red', label: 'DISCONNECTED' };
+    case 'unavailable':
+      return { scheme: 'gray', label: 'LIVE UNAVAILABLE' };
+    case 'error':
+      return { scheme: 'red', label: 'LIVE ERROR' };
+    default:
+      return { scheme: 'gray', label: 'IDLE' };
+  }
+};
+
+
 // main train detail panel component
-const TrainDetailPanel = ({ train, onClose }: TrainDetailPanelProps) => {
+const TrainDetailPanel = ({ train, liveStatus, onClose }: TrainDetailPanelProps) => {
   const [timeline, setTimeline] = useState<TimelineStop[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const status = getTrainStatus(train);
+  const liveBadge = getLiveBadge(liveStatus);
 
   // fetch schedule and movement data when train changes
   useEffect(() => {
@@ -168,6 +196,9 @@ const TrainDetailPanel = ({ train, onClose }: TrainDetailPanelProps) => {
               <Badge colorScheme={status.badgeScheme} variant="subtle" fontSize="0.65em" px={2}>
                 {status.label}
               </Badge>
+              <Badge colorScheme={liveBadge.scheme} variant="subtle" fontSize="0.65em" px={2}>
+                {liveBadge.label}
+              </Badge>
             </HStack>
 
             <Text fontSize="xs" color="blue.600" fontWeight="600" mb={2}>
@@ -208,8 +239,32 @@ const TrainDetailPanel = ({ train, onClose }: TrainDetailPanelProps) => {
         </Flex>
       </Box>
 
+      {/* live summary */}
+      <Box px={4} py={3} borderBottomWidth="1px" borderColor="gray.100" bg="blue.50">
+        <VStack align="stretch" spacing={1}>
+          <HStack justify="space-between" spacing={3}>
+            <Text fontSize="xs" fontWeight="700" color="gray.600">Latest location</Text>
+            <Text fontSize="xs" color="gray.800" fontWeight="600" textAlign="right">
+              {train.lastReportedLocation || 'Waiting for live update'}
+            </Text>
+          </HStack>
+          <HStack justify="space-between" spacing={3}>
+            <Text fontSize="xs" fontWeight="700" color="gray.600">Event type</Text>
+            <Text fontSize="xs" color="gray.800" fontWeight="600" textTransform="capitalize">
+              {train.lastReportedType ? train.lastReportedType.toLowerCase() : 'Unknown'}
+            </Text>
+          </HStack>
+          <HStack justify="space-between" spacing={3}>
+            <Text fontSize="xs" fontWeight="700" color="gray.600">Delay</Text>
+            <Text fontSize="xs" color={train.lastReportedDelay > 0 ? 'orange.500' : 'green.500'} fontWeight="700">
+              {train.lastReportedDelay > 0 ? `${train.lastReportedDelay} min late` : 'On time'}
+            </Text>
+          </HStack>
+        </VStack>
+      </Box>
+
       {/* tabs (right now we only have progress tab, opened for more)- */}
-      <Tabs variant="enclosed" size="sm" colorScheme="blue" flex={1} display="flex" flexDirection="column">
+      <Tabs variant="enclosed" size="sm" colorScheme="blue" flex={1} display="flex" flexDirection="column" minH="0">
         <TabList borderBottomWidth="1px" borderColor="gray.200" bg="gray.50">
           <Tab fontWeight="600" fontSize="xs" _selected={{ bg: "white", color: "blue.600", borderBottomColor: "white" }}>
             Progress
@@ -240,7 +295,7 @@ const TrainDetailPanel = ({ train, onClose }: TrainDetailPanelProps) => {
                 <Spinner color="blue.500" size="lg" thickness="3px" />
               </Flex>
             ) : (
-              <Box flex={1} overflowY="auto" py={2}>
+              <Box flex={1} overflowY="auto" py={2} minH="0">
                 <VStack spacing={0} align="stretch">
                   {timeline.map((stop, index) => (
                     <TimelineItem
