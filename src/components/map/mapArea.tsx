@@ -2,7 +2,7 @@ import 'leaflet/dist/leaflet.css';
 import { useState, useEffect, useRef } from 'react';
 import { Box, Spinner } from '@chakra-ui/react';
 
-import { MapContainer, TileLayer, useMap, Polyline, CircleMarker, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, useMap, Polyline, CircleMarker, Tooltip, Marker } from 'react-leaflet';
 import L from 'leaflet';
 
 import { ALL_TIPLOCS, findTiploc } from '../../data/tiplocData';
@@ -14,6 +14,25 @@ import { MAP_LAYERS } from './mapLayers';
 // configs
 const UK_CENTER: [number, number] = [54.5, -2.5];
 const DEFAULT_ZOOM = 6;
+const LIVE_TRAIN_ICON = L.divIcon({
+  className: 'velociti-live-train-icon',
+  html: '<div style="width:16px;height:16px;border-radius:9999px;background:#e53e3e;border:3px solid white;box-shadow:0 0 0 2px #c53030;"></div>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+});
+
+// normalises location strings so live updates can match route stops more reliably
+const normaliseLocation = (value = '') => value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+const normaliseEventType = (value = '') => value.trim().toUpperCase().replace(/[^A-Z]/g, '');
+
+const getStopCoords = (stop?: ScheduleStop | null): [number, number] | null => {
+  if (stop?.latLong?.latitude && stop?.latLong?.longitude) {
+    return [stop.latLong.latitude, stop.latLong.longitude];
+  }
+
+  return null;
+};
 
 
 // interfaces and props
@@ -58,6 +77,98 @@ const MapController = ({ targetView, resetTrigger }: MapControllerProps) => {
 };
 
 
+// tries to resolve the train marker position from live coords, route stops, or local TIPLOC data
+const getTrainMarkerPosition = (
+  selectedTrain: Train,
+  scheduleStops: ScheduleStop[]
+): [number, number] | null => {
+  if (
+    typeof selectedTrain.lastReportedLatitude === 'number' &&
+    typeof selectedTrain.lastReportedLongitude === 'number'
+  ) {
+    return [selectedTrain.lastReportedLatitude, selectedTrain.lastReportedLongitude];
+  }
+
+  const reportedLocation = normaliseLocation(selectedTrain.lastReportedLocation);
+  const reportedType = normaliseEventType(selectedTrain.lastReportedType);
+
+  if (reportedLocation) {
+    const scheduleMatch = scheduleStops.find(stop => {
+      const stopName = normaliseLocation(stop.location);
+      const stopTiploc = normaliseLocation(stop.tiploc);
+      return stopName === reportedLocation || stopTiploc === reportedLocation;
+    });
+
+    if (scheduleMatch?.latLong?.latitude && scheduleMatch?.latLong?.longitude) {
+      return [scheduleMatch.latLong.latitude, scheduleMatch.latLong.longitude];
+    }
+
+    const localMatch = findTiploc(reportedLocation);
+    if (localMatch?.Latitude && localMatch?.Longitude) {
+      return [localMatch.Latitude, localMatch.Longitude];
+    }
+  }
+
+  if (reportedType === 'ACTIVATED' || reportedType === 'ORIGIN' || reportedType === 'DEPARTURE') {
+    const firstStopCoords = getStopCoords(scheduleStops[0]);
+    if (firstStopCoords) return firstStopCoords;
+
+    const origin = findTiploc(selectedTrain.originTiploc);
+    if (origin?.Latitude && origin?.Longitude) {
+      return [origin.Latitude, origin.Longitude];
+    }
+  }
+
+  if (reportedType === 'DESTINATION' || reportedType === 'ARRIVAL') {
+    const lastStopCoords = getStopCoords(scheduleStops[scheduleStops.length - 1]);
+    if (lastStopCoords) return lastStopCoords;
+
+    const destination = findTiploc(selectedTrain.destinationTiploc);
+    if (destination?.Latitude && destination?.Longitude) {
+      return [destination.Latitude, destination.Longitude];
+    }
+  }
+
+  const originStopCoords = getStopCoords(scheduleStops[0]);
+  if (originStopCoords) {
+    return originStopCoords;
+  }
+
+  const origin = findTiploc(selectedTrain.originTiploc);
+  if (origin?.Latitude && origin?.Longitude) {
+    return [origin.Latitude, origin.Longitude];
+  }
+
+  const destinationStopCoords = getStopCoords(scheduleStops[scheduleStops.length - 1]);
+  if (destinationStopCoords) {
+    return destinationStopCoords;
+  }
+
+  const destination = findTiploc(selectedTrain.destinationTiploc);
+  if (destination?.Latitude && destination?.Longitude) {
+    return [destination.Latitude, destination.Longitude];
+  }
+
+  return null;
+};
+
+const getDelayLabel = (delay?: number) => {
+  if (typeof delay !== 'number' || Number.isNaN(delay)) {
+    return 'Delay unavailable';
+  }
+
+  if (delay === 0) {
+    return 'On time';
+  }
+
+  if (delay > 0) {
+    return `${delay} min late`;
+  }
+
+  return `${Math.abs(delay)} min early`;
+};
+
+
 // draws the actual scheduled route for a selected train using the schedule API
 const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
   const map = useMap();
@@ -90,6 +201,8 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
             validStops.map(s => [s.latLong.latitude, s.latLong.longitude] as [number, number])
           );
           map.fitBounds(bounds, { padding: [50, 50] });
+        } else if (validStops.length === 1) {
+          map.flyTo([validStops[0].latLong.latitude, validStops[0].latLong.longitude], 14);
         }
 
       } catch (err) {
@@ -120,35 +233,61 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
             [destination.Latitude, destination.Longitude]
           ]);
           map.fitBounds(bounds, { padding: [50, 50] });
+        } else if (!cancelled && origin?.Latitude && origin?.Longitude) {
+          setScheduleStops([
+            {
+              tiploc: origin.Tiploc,
+              location: origin.Name,
+              latLong: { latitude: origin.Latitude, longitude: origin.Longitude },
+              departure: ''
+            }
+          ]);
+
+          map.flyTo([origin.Latitude, origin.Longitude], 14);
         }
       }
     };
 
     fetchRoute();
     return () => { cancelled = true; };
-  }, [selectedTrain, map]);
-
-  if (scheduleStops.length < 2) return null;
+  }, [selectedTrain.activationId, selectedTrain.scheduleId, selectedTrain.originTiploc, selectedTrain.destinationTiploc, map]);
 
   // build positions array for the polyline
   const positions: [number, number][] = scheduleStops.map(
     s => [s.latLong.latitude, s.latLong.longitude]
   );
 
+  const markerPosition = getTrainMarkerPosition(selectedTrain, scheduleStops);
+
   return (
     <>
       {/* route line connecting all stops */}
-      <Polyline
-        positions={positions}
-        pathOptions={{
-          color: "#e53e3e",
-          weight: 4,
-          opacity: 0.85
-        }}
-      />
+      {positions.length >= 2 && (
+        <Polyline
+          positions={positions}
+          pathOptions={{
+            color: "#e53e3e",
+            weight: 4,
+            opacity: 0.85
+          }}
+        />
+      )}
+
+      {/* selected train live marker */}
+      {markerPosition && (
+        <Marker position={markerPosition} icon={LIVE_TRAIN_ICON} zIndexOffset={1000}>
+          <Tooltip direction="top" offset={[0, -8]}>
+            <div style={{ fontFamily: 'system-ui', fontSize: '12px' }}>
+              <strong>{selectedTrain.headCode}</strong><br />
+              <small>{selectedTrain.lastReportedLocation || selectedTrain.originLocation || 'Live position'}</small><br />
+              <small>{selectedTrain.lastReportedType || 'UPDATE'} · {getDelayLabel(selectedTrain.lastReportedDelay)}</small>
+            </div>
+          </Tooltip>
+        </Marker>
+      )}
 
       {/* stop markers along the route */}
-      {scheduleStops.map((stop, index) => {
+      {positions.length >= 2 && scheduleStops.map((stop, index) => {
         const isFirst = index === 0;
         const isLast = index === scheduleStops.length - 1;
         const isPass = !!stop.pass;
