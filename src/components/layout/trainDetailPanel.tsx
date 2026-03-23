@@ -209,7 +209,7 @@ const TrainDetailPanel = ({ train, onClose }: TrainDetailPanelProps) => {
       </Box>
 
       {/* tabs (right now we only have progress tab, opened for more)- */}
-      <Tabs variant="enclosed" size="sm" colorScheme="blue" flex={1} display="flex" flexDirection="column">
+      <Tabs variant="enclosed" size="sm" colorScheme="blue" flex={1} display="flex" flexDirection="column" minH="0">
         <TabList borderBottomWidth="1px" borderColor="gray.200" bg="gray.50">
           <Tab fontWeight="600" fontSize="xs" _selected={{ bg: "white", color: "blue.600", borderBottomColor: "white" }}>
             Progress
@@ -240,7 +240,7 @@ const TrainDetailPanel = ({ train, onClose }: TrainDetailPanelProps) => {
                 <Spinner color="blue.500" size="lg" thickness="3px" />
               </Flex>
             ) : (
-              <Box flex={1} overflowY="auto" py={2}>
+              <Box flex={1} overflowY="auto" py={2} minH="0">
                 <VStack spacing={0} align="stretch">
                   {timeline.map((stop, index) => (
                     <TimelineItem
