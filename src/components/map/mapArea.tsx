@@ -306,7 +306,7 @@ const MapArea = ({
         zoom={DEFAULT_ZOOM}
         style={{ height: "100%", width: "100%" }}
         scrollWheelZoom
-        zoomControl={false}
+        zoomControl={true}
         preferCanvas
       >
         <MapController
