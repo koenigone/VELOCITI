@@ -3,14 +3,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Box, Spinner } from '@chakra-ui/react';
 
 import { MapContainer, TileLayer, useMap, Polyline, CircleMarker, Tooltip, Marker } from 'react-leaflet';
-import { MapContainer, TileLayer, useMap, Polyline, CircleMarker, Tooltip, Marker } from 'react-leaflet';
 import L from 'leaflet';
 
-import { ALL_TIPLOCS, findTiploc } from '../../data/tiplocData';
-import { trainApi } from '../../api/api';
-import type { TiplocData, Train, ScheduleStop } from '../../types';
-import MapControls from './mapControls';
-import { MAP_LAYERS } from './mapLayers';
 import { ALL_TIPLOCS, findTiploc } from '../../data/tiplocData';
 import { trainApi } from '../../api/api';
 import type { TiplocData, Train, ScheduleStop } from '../../types';
@@ -38,9 +32,7 @@ export interface MapTarget {
 interface MapAreaProps {
   targetView?: MapTarget | null;
   selectedTrain?: Train | null;
-  selectedTrain?: Train | null;
   searchedStation?: string | null;
-  onStationSelect?: (station: TiplocData) => void;
   onStationSelect?: (station: TiplocData) => void;
 }
 
@@ -50,8 +42,6 @@ interface MapControllerProps {
 }
 
 
-// handles map movements based on the selected station (tiploc) and reset map to default view
-const MapController = ({ targetView, resetTrigger }: MapControllerProps) => {
 // handles map movements based on the selected station (tiploc) and reset map to default view
 const MapController = ({ targetView, resetTrigger }: MapControllerProps) => {
   const map = useMap();
@@ -112,9 +102,7 @@ const getTrainMarkerPosition = (
 const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
   const map = useMap();
   const [scheduleStops, setScheduleStops] = useState<ScheduleStop[]>([]);
-  const [scheduleStops, setScheduleStops] = useState<ScheduleStop[]>([]);
 
-  // when selectedTrain changes, fetch its full scheduled route from the API
   // when selectedTrain changes, fetch its full scheduled route from the API
   useEffect(() => {
     let cancelled = false;
@@ -249,7 +237,6 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
 };
 
 
-
 // styles for tiploc markers
 const DEFAULT_STATION_STYLE: L.CircleMarkerOptions = { // default style for all stations
   radius: 3,
@@ -322,7 +309,6 @@ const TiplocLayer = ({
 
       return L.circleMarker([t.Latitude, t.Longitude], { ...baseStyle, renderer: canvasRenderer })
         .bindTooltip(`
-        .bindTooltip(`
         <div style="font-family: system-ui;">
           <strong>${t.Name}</strong><br/>
           <small>TIPLOC: ${t.Tiploc}</small>
@@ -353,7 +339,6 @@ const MapArea = ({
   targetView,
   selectedTrain,
   searchedStation,
-  onStationSelect,
   onStationSelect,
 }: MapAreaProps) => {
 
@@ -388,7 +373,7 @@ const MapArea = ({
         zoom={DEFAULT_ZOOM}
         style={{ height: "100%", width: "100%" }}
         scrollWheelZoom
-        zoomControl={true}
+        zoomControl={false}
         preferCanvas
       >
         <MapController
@@ -406,11 +391,8 @@ const MapArea = ({
           visible={showTiplocs} 
           searchedStation={searchedStation}
           onStationSelect={onStationSelect}
-          searchedStation={searchedStation}
-          onStationSelect={onStationSelect}
         />
 
-        {selectedTrain && <RouteRenderer key={selectedTrain.trainId} selectedTrain={selectedTrain} />}
         {selectedTrain && <RouteRenderer key={selectedTrain.trainId} selectedTrain={selectedTrain} />}
 
         <MapControls
