@@ -6,52 +6,44 @@ import {
 import { FaSearch, FaCircle, FaTimes, FaMapMarkerAlt } from 'react-icons/fa';
 import { MdTrain } from 'react-icons/md';
 import { trainApi } from '../../api/api';
+import { ALL_TIPLOCS, HEADCODE_SEARCH_HUBS } from '../../data/tiplocData';
+import { getTrainStatus, formatTime } from '../../utils/trainUtils';
 import type { Train, TiplocData } from '../../types';
-import tiplocDataRaw from '../../data/TiplocPublicExport_2025-12-01_094655.json';
 
-const ALL_TIPLOCS = (tiplocDataRaw as any).Tiplocs as TiplocData[]; // load TIPLOC data from local JSON file for autocomplete
 const MAX_SUGGESTIONS = 8; // autocomplete suggestions limit
-const DEBOUNCE_MS = 250;  // debounce delay for autocomplete input
+const DEBOUNCE_MS = 250;   // debounce delay for autocomplete input
+const HEADCODE_CHUNK_SIZE = 20;  // tiplocs per request — keeps URLs short
+const HEADCODE_BATCH_SIZE = 2;   // concurrent chunk requests
 
-// available search modes
+// the two search modes available in the sidebar
 type SearchMode = 'station' | 'train';
+
 
 interface SidebarProps {
   onLocationSelect: (lat: number, lng: number, stationCode: string) => void;
   onTrainSelect: (train: Train) => void;
+  externalStation?: TiplocData | null; // set when user clicks a station on the map
 }
-
-
-/* this function determines the status of a train based on its properties
-  and returns an object with the appropriate color, badge scheme, and label for display in the UI
-*/
-const getTrainStatus = (train: Train) => {
-  if (train.cancelled) return { color: "red.600", badgeScheme: "red", label: "CANCELLED" }; // when cancelled, overrides all other statuses
-  if (train.lastReportedType === "TERMINATED") return { color: "gray.500", badgeScheme: "gray", label: "TERMINATED" }; // terminated trains are not cancelled but have ended their journey early
-  if (train.lastReportedDelay > 4) return { color: "red.500", badgeScheme: "red", label: `${train.lastReportedDelay} MINS LATE` }; // late trains with delay greater than 4 mins
-  return { color: "green.500", badgeScheme: "green", label: "ON TIME" }; // default status for trains that are not cancelled, terminated, or late
-};
-
-
-/* format time from long string to HH:MM format
-  returns "--:--" if the input is invalid or missing
-*/
-const formatTime = (isoString?: string) => {
-  if (!isoString) return "--:--";
-
-  const date = new Date(isoString);
-  if (isNaN(date.getTime())) return "--:--";
-
-  // format time as HH:MM
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-};
 
 
 /**
  * Performs fuzzy search across TIPLOC Name and Code fields.
+ * Only returns passenger stations since those are the only ones the API
+ * returns train data for. Signal boxes, carriage sheds, freight yards etc. are excluded.
  * Matches are scored: exact match > starts with > word boundary > contains.
- * Passenger stations (with CRS codes) are boosted in ranking.
  */
+const PASSENGER_CATEGORIES = new Set([
+  'InterchangePlanningLocation',
+  'ThroughPlanningLocation',
+  'StoppingOnly',
+  'Interchange',
+]);
+
+const isPassengerStation = (t: TiplocData): boolean =>
+  !!t.Details?.CRS &&
+  !!t.Details?.TPS_StationCategory &&
+  PASSENGER_CATEGORIES.has(t.Details.TPS_StationCategory);
+
 const fuzzySearchTiplocs = (query: string): TiplocData[] => {
   if (query.length < 2) return [];
 
@@ -60,26 +52,25 @@ const fuzzySearchTiplocs = (query: string): TiplocData[] => {
   const scored = ALL_TIPLOCS
     .filter(t => t.Latitude && t.Longitude)               // only entries with valid coordinates
     .filter(t => !t.Tiploc.startsWith('ELOC'))            // exclude engineering locations
+    .filter(isPassengerStation)                            // only real passenger stations
     .map(t => {
       const name = t.Name.toLowerCase();
       const code = t.Tiploc.toLowerCase();
+      const crs = (t.Details?.CRS || '').toLowerCase();
       let score = 0;
 
       // exact match on either field gets highest score
-      if (name === q || code === q) score = 100;
+      if (name === q || code === q || crs === q) score = 100;
       // starts-with match is next best
       else if (name.startsWith(q)) score = 80;
       else if (code.startsWith(q)) score = 70;
-      // word boundary match ("pancras" matches "london st pancras")
+      // word boundary match (e.g. "pancras" matches "london st pancras")
       else if (name.split(/\s+/).some(word => word.startsWith(q))) score = 60;
       // contains match
       else if (name.includes(q)) score = 40;
       else if (code.includes(q)) score = 30;
       // no match
       else return null;
-
-      // boost real passenger stations with CRS codes
-      if (t.Details?.CRS) score += 10;
 
       return { tiploc: t, score };
     })
@@ -92,28 +83,63 @@ const fuzzySearchTiplocs = (query: string): TiplocData[] => {
 };
 
 
-// main sidebar component
-const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
+// splits a large list into smaller arrays for batched API requests
+const chunkArray = <T,>(items: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
 
-  // ---- shared state ----
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+
+  return chunks;
+};
+
+
+// sorts train results so exact headcode matches appear first, then by departure time
+const sortHeadcodeResults = (a: Train, b: Train, headcode: string) => {
+  const aExact = a.headCode?.toUpperCase() === headcode ? 1 : 0;
+  const bExact = b.headCode?.toUpperCase() === headcode ? 1 : 0;
+
+  if (aExact !== bExact) {
+    return bExact - aExact;
+  }
+
+  return (a.scheduledDeparture || '').localeCompare(b.scheduledDeparture || '');
+};
+
+
+// gets a safe message from an unknown error object
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
+
+// main sidebar component
+const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarProps) => {
+
+  // shared state
   const [searchMode, setSearchMode] = useState<SearchMode>('station');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [trains, setTrains] = useState<Train[]>([]);
   const [selectedTrainId, setSelectedTrainId] = useState<string | null>(null);
 
-  // ---- station search state ----
+  // station search state
   const [activeStation, setActiveStation] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<TiplocData[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
-  // ---- train search state ----
   const [searchedHeadcode, setSearchedHeadcode] = useState<string | null>(null);
 
   // refs
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchGenRef = useRef(0); // tracks current search generation to cancel stale requests
 
   const toast = useToast();
 
@@ -124,6 +150,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
    */
   const handleModeSwitch = (mode: SearchMode) => {
     if (mode === searchMode) return;
+    searchGenRef.current++; // cancel any in-flight search
     setSearchMode(mode);
     setSearchTerm('');
     setTrains([]);
@@ -135,11 +162,10 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     setHighlightedIndex(-1);
   };
 
-  // autocomplete logic 
 
   /**
-   * debounced autocomplete: updates suggestion list as user types.
-   * only active in station search mode.
+   * Debounced autocomplete: updates suggestion list as user types.
+   * Only active in station search mode.
    */
   useEffect(() => {
     if (searchMode !== 'station' || searchTerm.length < 2) {
@@ -171,8 +197,11 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+
   // handle search for station and its schedule
   const executeStationSearch = useCallback(async (tiplocCode: string, stationName?: string) => {
+    const gen = ++searchGenRef.current; // new generation — stale requests will bail out
+
     setIsLoading(true);       // show loading spinner
     setTrains([]);            // clear previous search results
     setSelectedTrainId(null); // clear selected train
@@ -186,6 +215,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
       try { // fetch location data for the searched tiploc
         const location = await trainApi.getLocation(tiplocCode);
+        if (gen !== searchGenRef.current) return; // stale
         lat = location.latitude;
         lng = location.longitude;
       } catch {
@@ -197,6 +227,8 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
         }
       }
 
+      if (gen !== searchGenRef.current) return; // stale
+
       if (lat === null || lng === null) {
         throw new Error(`Could not find coordinates for: ${tiplocCode}`);
       }
@@ -205,22 +237,27 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
       // fetch train schedule (may return empty on staging API)
       try {
-        const schedule = await trainApi.getSchedule(tiplocCode);
+        const schedule = await trainApi.getTrainsAtStation(tiplocCode);
+        if (gen !== searchGenRef.current) return; // stale
         setTrains(schedule);
       } catch {
+        if (gen !== searchGenRef.current) return;
         setTrains([]);
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      if (gen !== searchGenRef.current) return;
       toast({ // custom error toast
         title: "Search failed",
-        description: error.message || "Could not find station.",
+        description: getErrorMessage(error, "Could not find station."),
         status: "error",
         duration: 3000,
         isClosable: true,
       });
     } finally {
-      setIsLoading(false);
+      if (gen === searchGenRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [onLocationSelect, toast]);
 
@@ -235,30 +272,47 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     executeStationSearch(tiploc.Tiploc, tiploc.Name);
   };
 
-  // train search logic
 
   /**
-   * executes train search by headcode.
-   * fetches all trains from EUSTON (primary data source on staging) and filters by headcode.
+   * Executes nationwide headcode search by scanning major UK rail hubs.
+   * Uses a curated hub list instead of all stations — keeps URLs short and avoids CORS failures.
+   * Results are deduplicated by train id and sorted with exact matches first.
    */
   const executeTrainSearch = useCallback(async (headcode: string) => {
+    const gen = ++searchGenRef.current; // new generation
     setIsLoading(true);
     setTrains([]);
     setSelectedTrainId(null);
     setSearchedHeadcode(headcode.toUpperCase());
 
     try {
-      // fetch all trains from EUSTON and filter by headcode client-side
-      const allTrains = await trainApi.getSchedule('EUSTON');
-
       const hc = headcode.toUpperCase();
-      const seen = new Set<string>();
-      const matches = allTrains.filter(train => {
-        if (!train.headCode?.toUpperCase().includes(hc)) return false;
-        if (seen.has(train.trainId)) return false;
-        seen.add(train.trainId);
-        return true;
-      });
+      const hubChunks = chunkArray(HEADCODE_SEARCH_HUBS, HEADCODE_CHUNK_SIZE);
+      const matchesById = new Map<string, Train>();
+
+      for (let i = 0; i < hubChunks.length; i += HEADCODE_BATCH_SIZE) {
+        if (gen !== searchGenRef.current) return; // search was superseded
+
+        const batch = hubChunks.slice(i, i + HEADCODE_BATCH_SIZE);
+        const results = await Promise.allSettled(
+          batch.map(chunk => trainApi.getTrainsAtTiplocs(chunk))
+        );
+
+        results.forEach((result) => {
+          if (result.status !== 'fulfilled') return;
+
+          result.value.forEach((train) => {
+            if (!train.headCode?.toUpperCase().includes(hc)) return;
+            if (!matchesById.has(train.trainId)) {
+              matchesById.set(train.trainId, train);
+            }
+          });
+        });
+      }
+
+      if (gen !== searchGenRef.current) return; // stale
+
+      const matches = Array.from(matchesById.values()).sort((a, b) => sortHeadcodeResults(a, b, hc));
 
       if (matches.length === 0) {
         toast({
@@ -279,18 +333,46 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
         onTrainSelect(train);
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      if (gen !== searchGenRef.current) return;
       toast({
         title: "Search failed",
-        description: error.message || "Could not search for train.",
+        description: getErrorMessage(error, "Could not search for train."),
         status: "error",
         duration: 3000,
         isClosable: true,
       });
     } finally {
-      setIsLoading(false);
+      if (gen === searchGenRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [onLocationSelect, onTrainSelect, toast]);
+  }, [onTrainSelect, toast]);
+
+
+  /**
+   * Reacts to station clicks on the map.
+   * Switches to station mode and runs the search as if the user typed it.
+   */
+  const lastExternalTiplocRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!externalStation) return;
+    // avoid re-searching the same station if it's already displayed
+    if (externalStation.Tiploc === lastExternalTiplocRef.current) return;
+
+    lastExternalTiplocRef.current = externalStation.Tiploc;
+
+    // switch to station mode and populate input
+    setSearchMode('station');
+    setSearchTerm(externalStation.Name);
+    setSearchedHeadcode(null);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setHighlightedIndex(-1);
+
+    executeStationSearch(externalStation.Tiploc, externalStation.Name);
+  }, [externalStation, executeStationSearch]);
 
 
   // unified search handler
@@ -303,8 +385,13 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     }
 
     // station mode: try to resolve the input to a TIPLOC
+    // prefer passenger stations since those actually return train data
+    const term = searchTerm.trim().toLowerCase();
+
     const directMatch = ALL_TIPLOCS.find(
-      t => t.Tiploc.toLowerCase() === searchTerm.trim().toLowerCase()
+      t => t.Tiploc.toLowerCase() === term && isPassengerStation(t)
+    ) || ALL_TIPLOCS.find(
+      t => t.Tiploc.toLowerCase() === term
     );
     if (directMatch) {
       executeStationSearch(directMatch.Tiploc, directMatch.Name);
@@ -312,7 +399,9 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     }
 
     const nameMatch = ALL_TIPLOCS.find(
-      t => t.Name.toLowerCase() === searchTerm.trim().toLowerCase()
+      t => t.Name.toLowerCase() === term && isPassengerStation(t)
+    ) || ALL_TIPLOCS.find(
+      t => t.Name.toLowerCase() === term
     );
     if (nameMatch) {
       executeStationSearch(nameMatch.Tiploc, nameMatch.Name);
@@ -364,6 +453,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 
   // clear search and reset all state
   const handleClear = () => {
+    searchGenRef.current++; // cancel any in-flight search
     setSearchTerm('');
     setSuggestions([]);
     setShowSuggestions(false);
@@ -371,13 +461,14 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
     setSelectedTrainId(null);
     setActiveStation(null);
     setSearchedHeadcode(null);
+    lastExternalTiplocRef.current = null;
   };
 
 
   return (
     <Box h="full" display="flex" flexDirection="column" bg="white" borderRight="1px" borderColor="gray.200">
 
-      {/* search modes tabs */}
+      {/* search mode tabs */}
       <Flex borderBottomWidth="1px" borderColor="gray.200" bg="white">
         <SearchTab label="Station" icon={FaMapMarkerAlt} isActive={searchMode === 'station'} onClick={() => handleModeSwitch('station')} />
         <SearchTab label="Train" icon={MdTrain} isActive={searchMode === 'train'} onClick={() => handleModeSwitch('train')} />
@@ -417,7 +508,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
               )}
             </InputGroup>
 
-            {/* autocomplete dropdown (station mode only) */}
+            {/* auto complete dropdown */}
             {searchMode === 'station' && showSuggestions && (
               <Box ref={suggestionsRef} position="absolute" top="100%" left={0} right={0} mt={1}
                 bg="white" border="1px solid" borderColor="gray.200" borderRadius="md"
@@ -452,7 +543,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
         </Flex>
       </Box>
 
-      {/* results context label */}
+      {/* results context */}
       {!isLoading && trains.length > 0 && (
         <Box px={4} py={2} borderBottomWidth="1px" borderColor="gray.100" bg="gray.50">
           <Text fontSize="xs" fontWeight="bold" color="gray.500">
@@ -572,7 +663,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect }: SidebarProps) => {
 };
 
 
-// search tab button component
+// search tab button
 const SearchTab = ({ label, icon, isActive, onClick }: { label: string; icon: React.ElementType; isActive: boolean; onClick: () => void }) => (
   <Box flex={1} py={2.5} textAlign="center" cursor="pointer" onClick={onClick}
     borderBottomWidth="2px" borderBottomColor={isActive ? "blue.500" : "transparent"}

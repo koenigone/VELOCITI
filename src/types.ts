@@ -51,6 +51,8 @@ export interface Train {
   lastReportedLocation?: string;
   lastReportedDelay: number;
   lastReportedType: string;
+  lastReportedLatitude?: number;
+  lastReportedLongitude?: number;
   cancelled: boolean;
 
   // schedule ID returned by the API for fetching full journey details
