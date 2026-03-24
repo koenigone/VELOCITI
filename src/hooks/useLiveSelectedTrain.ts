@@ -19,7 +19,9 @@ interface LiveTrainUpdate {
   lastReportedLongitude?: number;
 }
 
-const SOCKET_URL = import.meta.env.VITE_VELOCITI_SOCKET_URL;
+// in dev, VITE_VELOCITI_SOCKET_URL points to the local socket server (e.g. http://localhost:3001)
+// in production, it's left empty/unset — socket.io-client auto-connects to the same origin
+const SOCKET_URL = import.meta.env.VITE_VELOCITI_SOCKET_URL || undefined;
 
 
 // merges live socket updates into the existing selected train object
@@ -62,14 +64,9 @@ const useLiveSelectedTrain = (
       return;
     }
 
-    if (!SOCKET_URL) {
-      setLiveStatus('unavailable');
-      return;
-    }
-
     setLiveStatus('connecting');
 
-    const socket = io(SOCKET_URL, {
+    const socket = io(SOCKET_URL || window.location.origin, {
       transports: ['websocket'],
       reconnection: true,
     });

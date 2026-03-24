@@ -1,13 +1,17 @@
 import express from 'express';
 import http from 'http';
-import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { Server } from 'socket.io';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const server = http.createServer(app);
 
-const FRONTEND_ORIGIN = 'http://localhost:5173';
-const PORT = 3001;
+// Render assigns its own port via process.env.PORT (default 10000)
+const PORT = process.env.PORT || 3001;
+
 const API_BASE =
   process.env.VELOCITI_API_BASE_URL ||
   'https://traindata-stag-api.railsmart.io';
@@ -18,26 +22,36 @@ const API_KEY =
 
 const POLL_INTERVAL_MS = 15000;
 
-app.use(cors({ origin: FRONTEND_ORIGIN }));
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:3001',
+];
 
 const io = new Server(server, {
   cors: {
-    origin: FRONTEND_ORIGIN,
+    origin: ALLOWED_ORIGINS,
     methods: ['GET', 'POST'],
   },
 });
 
+
+// serve the built Vite frontend in production
+const distPath = path.join(__dirname, 'dist');
+app.use(express.static(distPath));
+
+
+// socket.io live train logic
 const activeSubscriptions = new Map();
 
 const normaliseLocation = (value = '') =>
   value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-const getJson = async (path) => {
+const getJson = async (apiPath) => {
   if (!API_KEY) {
     throw new Error('Missing API key for live update server');
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${API_BASE}${apiPath}`, {
     headers: {
       'X-ApiKey': API_KEY,
       Accept: 'application/json',
@@ -169,10 +183,11 @@ io.on('connection', (socket) => {
   });
 });
 
-app.get('/', (_req, res) => {
-  res.send('VELOCITI live socket server is running');
+// fallback: any non-API/non-socket route serves
+app.use((_req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
-server.listen(PORT, () => {
-  console.log(`Socket server running on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`VELOCITI server running on port ${PORT}`);
 });
