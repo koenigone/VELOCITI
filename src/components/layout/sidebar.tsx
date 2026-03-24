@@ -537,7 +537,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
             )}
           </Box>
 
-          <Button size="sm" colorScheme="blue" onClick={handleSearch} isLoading={isLoading} disabled={!searchTerm}>
+          <Button size="sm" aria-label="Search for station or train" colorScheme="blue" onClick={handleSearch} isLoading={isLoading} disabled={!searchTerm}>
             <FaSearch />
           </Button>
         </Flex>
@@ -638,9 +638,9 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
         })}
 
         {!isLoading && trains.length === 0 && (
-          <Flex direction="column" align="center" justify="center" py={12} color="gray.400" mt={10}>
+          <Flex direction="column" align="center" justify="center" py={12} color="gray.600" mt={10}>
             <Icon as={searchMode === 'station' ? FaMapMarkerAlt : MdTrain} boxSize={12} mb={4} opacity={0.2} />
-            <Text fontSize="md" fontWeight="medium" textAlign="center" color="gray.500" mb={1}>
+            <Text fontSize="md" fontWeight="medium" textAlign="center" color="gray.700" mb={1}>
               {!searchTerm
                 ? (searchMode === 'station' ? "Search for a station" : "Search for a train")
                 : "No active trains found"}

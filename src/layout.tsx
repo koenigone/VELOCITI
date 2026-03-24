@@ -15,7 +15,7 @@ const Layout = ({ sideContent, mapContent, panelContent }: LayoutProps) => {
             <Header />
 
             {/* main content: sidebar on left, map content on right  */}
-            <Flex flex="1" overflow="hidden">
+            <Flex flex="1" as="main" overflow="hidden">
 
                 {/* sidebar */}
                 <Box
