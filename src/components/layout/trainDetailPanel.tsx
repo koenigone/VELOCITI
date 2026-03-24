@@ -15,8 +15,11 @@ import type { LiveTrackingStatus } from '../../hooks/useLiveSelectedTrain';
 interface TrainDetailPanelProps {
   train: Train;
   liveStatus: LiveTrackingStatus;
+  lastUpdated: Date | null;
+  onLastUpdatedChange: (value: Date) => void; // NEW
   onClose: () => void;
 }
+
 
 
 // normalises location strings so movement events can match schedule stops more reliably
@@ -123,7 +126,8 @@ const getLiveBadge = (status: LiveTrackingStatus) => {
 
 
 // main train detail panel component
-const TrainDetailPanel = ({ train, liveStatus, onClose }: TrainDetailPanelProps) => {
+const TrainDetailPanel = ({train,liveStatus,lastUpdated,onLastUpdatedChange,onClose,}: TrainDetailPanelProps) => {
+
   const [timeline, setTimeline] = useState<TimelineStop[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,42 +135,55 @@ const TrainDetailPanel = ({ train, liveStatus, onClose }: TrainDetailPanelProps)
   const status = getTrainStatus(train);
   const liveBadge = getLiveBadge(liveStatus);
 
+
+  // shared fetch function for initial load + manual refresh
+  const fetchData = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const [schedule, movements] = await Promise.all([
+        trainApi.getTrainSchedule(train.activationId, train.scheduleId),
+        trainApi.getTrainMovement(train.activationId, train.scheduleId).catch(
+          () => [] as MovementEvent[]
+        ),
+      ]);
+
+      console.log(
+        '[Velociti Detail] Schedule:',
+        schedule.length,
+        'stops | Movement:',
+        movements.length,
+        'events'
+      );
+
+      const built = buildTimeline(schedule, movements, train);
+      setTimeline(built);
+      onLastUpdatedChange(new Date());
+    } catch (err: unknown) {
+      console.warn('[Velociti Detail] Failed to fetch journey data:', err);
+      setError(getErrorMessage(err, 'Failed to load journey details'));
+      setTimeline(buildTimeline([], [], train)); // fallback
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // fetch schedule and movement data when train changes
   useEffect(() => {
     let cancelled = false;
 
-    const fetchData = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // fetch both schedule and movement data in parallel
-        const [schedule, movements] = await Promise.all([
-          trainApi.getTrainSchedule(train.activationId, train.scheduleId),
-          trainApi.getTrainMovement(train.activationId, train.scheduleId).catch(() => [] as MovementEvent[])
-        ]);
-
-        if (cancelled) return;
-
-        console.log('[Velociti Detail] Schedule:', schedule.length, 'stops | Movement:', movements.length, 'events');
-
-        const built = buildTimeline(schedule, movements, train);
-        setTimeline(built);
-      } catch (err: unknown) {
-        if (cancelled) return;
-        console.warn('[Velociti Detail] Failed to fetch journey data:', err);
-        setError(getErrorMessage(err, "Failed to load journey details"));
-
-        // use fallback minimal timeline
-        setTimeline(buildTimeline([], [], train));
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
+    const run = async () => {
+      await fetchData();
+      if (cancelled) return;
     };
 
-    fetchData();
-    return () => { cancelled = true; };
+    run();
+    return () => {
+      cancelled = true;
+    };
   }, [train]);
+
 
 
   return (
@@ -238,6 +255,23 @@ const TrainDetailPanel = ({ train, liveStatus, onClose }: TrainDetailPanelProps)
           />
         </Flex>
       </Box>
+            {/* manual refresh bar */}
+      <Box px={4} py={2} borderBottomWidth="1px" borderColor="gray.100" bg="white">
+        <Flex justify="space-between" align="center">
+          <Text fontSize="xs" color="gray.500">
+            Click refresh to reload train details
+          </Text>
+          <IconButton
+            aria-label="Refresh train data"
+            size="xs"
+            colorScheme="blue"
+            variant="outline"
+            icon={<FaClock />}
+            isLoading={isLoading}
+            onClick={fetchData}
+          />
+        </Flex>
+      </Box>
 
       {/* live summary */}
       <Box px={4} py={3} borderBottomWidth="1px" borderColor="gray.100" bg="blue.50">
@@ -248,20 +282,32 @@ const TrainDetailPanel = ({ train, liveStatus, onClose }: TrainDetailPanelProps)
               {train.lastReportedLocation || 'Waiting for live update'}
             </Text>
           </HStack>
+
           <HStack justify="space-between" spacing={3}>
             <Text fontSize="xs" fontWeight="700" color="gray.600">Event type</Text>
             <Text fontSize="xs" color="gray.800" fontWeight="600" textTransform="capitalize">
               {train.lastReportedType ? train.lastReportedType.toLowerCase() : 'Unknown'}
             </Text>
           </HStack>
+
           <HStack justify="space-between" spacing={3}>
             <Text fontSize="xs" fontWeight="700" color="gray.600">Delay</Text>
             <Text fontSize="xs" color={train.lastReportedDelay > 0 ? 'orange.500' : 'green.500'} fontWeight="700">
               {train.lastReportedDelay > 0 ? `${train.lastReportedDelay} min late` : 'On time'}
             </Text>
           </HStack>
+
+          <HStack justify="space-between" spacing={3}>
+            <Text fontSize="xs" fontWeight="700" color="gray.600">Last updated</Text>
+            <Text fontSize="xs" color="gray.800" fontWeight="600">
+              {lastUpdated
+                ? lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                : 'Waiting for update'}
+            </Text>
+          </HStack>
         </VStack>
       </Box>
+
 
       {/* tabs (right now we only have progress tab, opened for more)- */}
       <Tabs variant="enclosed" size="sm" colorScheme="blue" flex={1} display="flex" flexDirection="column" minH="0">

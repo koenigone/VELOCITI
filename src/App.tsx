@@ -24,7 +24,9 @@ function App() {
     });
   }, []);
 
-  const { liveStatus } = useLiveSelectedTrain(selectedTrain, handleLiveTrainUpdate);
+    const { liveStatus, lastUpdated, setLastUpdated } =useLiveSelectedTrain(selectedTrain, handleLiveTrainUpdate);
+
+
 
   // called when user selects a station from the sidebar search
   const handleLocationSelect = (lat: number, lng: number, stationCode: string) => {
@@ -79,13 +81,16 @@ function App() {
       }
       panelContent=
       {
-        selectedTrain ? (
+                selectedTrain ? (
           <TrainDetailPanel
             train={selectedTrain}
             liveStatus={liveStatus}
+            lastUpdated={lastUpdated}
+            onLastUpdatedChange={setLastUpdated}
             onClose={handleCloseTrainPanel}
           />
         ) : selectedStation ? (
+
           <StationDetailPanel
             station={selectedStation}
             onClose={handleCloseStationPanel}

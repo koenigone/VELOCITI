@@ -45,6 +45,7 @@ const useLiveSelectedTrain = (
   onLiveUpdate: (updatedTrain: Train) => void
 ) => {
   const [socketStatus, setSocketStatus] = useState<LiveTrackingStatus>('idle');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const selectedTrainRef = useRef<Train | null>(selectedTrain);
   const trainId = selectedTrain?.trainId;
@@ -114,7 +115,9 @@ const useLiveSelectedTrain = (
       if (!sameTrain) return;
 
       setSocketStatus('live');
-      onLiveUpdate(mergeLiveTrain(activeTrain, payload));
+      const merged = mergeLiveTrain(activeTrain, payload); 
+      setLastUpdated(new Date());                          
+      onLiveUpdate(merged);  
     });
 
     socket.on('live:error', () => {
@@ -127,6 +130,7 @@ const useLiveSelectedTrain = (
       socket.disconnect();
       socketRef.current = null;
       setSocketStatus('idle');
+      setLastUpdated(null);
     };
   }, [trainId, activationId, scheduleId, headCode, onLiveUpdate]);
 
@@ -136,7 +140,7 @@ const useLiveSelectedTrain = (
       ? 'unavailable'
       : socketStatus;
 
-  return { liveStatus };
+  return { liveStatus, lastUpdated, setLastUpdated };
 };
 
 export default useLiveSelectedTrain;
