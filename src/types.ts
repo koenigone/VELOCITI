@@ -30,23 +30,33 @@ export interface TiplocExport {
   Tiplocs: TiplocData[];
 }
 
+export interface TiplocLocation {
+  id: number;
+  tiploc: string;
+  latitude: number;
+  longitude: number;
+  stanox: string;
+}
+
+
+// train types
 export interface Train {
   trainId: string;
   headCode: string;
   toc_Name?: string;
-  
-  // origin Info
+
+  // origin info
   originTiploc: string;
   originLocation: string;
   scheduledDeparture: string;
   actualDeparture?: string;
-  
-  // destination Info
+
+  // destination info
   destinationTiploc: string;
   destinationLocation: string;
   scheduledArrival: string;
   actualArrival?: string;
-  
+
   // live status
   lastReportedLocation?: string;
   lastReportedDelay: number;
@@ -55,14 +65,48 @@ export interface Train {
   lastReportedLongitude?: number;
   cancelled: boolean;
 
-  // schedule ID returned by the API for fetching full journey details
-  scheduleId?: number;
+  // IDs needed for fetching full schedule and movement data
+  activationId: number;
+  scheduleId: number;
 }
 
-export interface TiplocLocation {
-  id: number;
+
+// schedule API response
+export interface ScheduleStop {
   tiploc: string;
+  location: string;
+  latLong: {
+    latitude: number;
+    longitude: number;
+  };
+  // only one of these will be present per stop
+  departure?: string;  // "HHmm" format - origin and intermediate departures
+  arrival?: string;    // "HHmm" format - destination and intermediate arrivals
+  pass?: string;       // "HHmm" format - pass-through timing points
+}
+
+
+// movement API response
+export interface MovementEvent {
+  location: string;
+  eventType: "ARRIVAL" | "DEPARTURE" | "DESTINATION" | "ORIGIN";
+  planned: string;            // ISO datetime
+  actual: string;             // ISO datetime
+  variation: number;          // delay in minutes (0 = on time)
+  plannedDeparture?: string;  // ISO datetime
+  actualDeparture?: string;   // ISO datetime
+}
+
+
+// timeline stop
+export interface TimelineStop {
+  tiploc: string;
+  name: string;
   latitude: number;
   longitude: number;
-  stanox: string;
+  scheduledTime: string | null;  // the relevant time for this stop (depart/arrive/pass)
+  actualTime: string | null;     // actual time from movement data
+  variation: number | null;      // delay in minutes
+  eventType: "departure" | "arrival" | "pass";
+  isPass: boolean;
 }
