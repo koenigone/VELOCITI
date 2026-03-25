@@ -216,9 +216,9 @@ const TrainDetailPanel = ({ train, liveStatus, lastUpdated, onLastUpdatedChange,
 
   return (
     <Box
-      w={{ base: "320px", md: "370px" }}
+      w={{ base: "320px", md: "380px" }}
       minW="320px"
-      maxW="420px"
+      maxW="430px"
       h="full"
       bg="white"
       borderLeftWidth="1px"
@@ -441,7 +441,7 @@ const TimelineItem = ({ stop, isFirst, isLast, isLiveEvent }: {
 
         {/* timing row */}
         <HStack spacing={2} fontSize="xs">
-          <Text w="55px" color="gray.400" fontWeight="600" textTransform="capitalize">
+          <Text w="60px" color="gray.400" fontWeight="600" textTransform="capitalize">
             {stop.eventType}
           </Text>
           <Text fontFamily="mono" color="gray.600" w="42px">

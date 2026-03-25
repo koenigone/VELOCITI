@@ -14,12 +14,14 @@ const MAX_SUGGESTIONS = 8; // autocomplete suggestions limit
 const DEBOUNCE_MS = 250;   // debounce delay for autocomplete input
 const HEADCODE_CHUNK_SIZE = 20;  // tiplocs per request — keeps URLs short
 const HEADCODE_BATCH_SIZE = 2;   // concurrent chunk requests
+const REFRESH_INTERVAL_MS = 30000; // auto-refresh station train list every 30s
 
 // the two search modes available in the sidebar
 type SearchMode = 'station' | 'train';
 
-
 interface SidebarProps {
+  trains: Train[];
+  onTrainsChange: (trains: Train[]) => void;
   onLocationSelect: (lat: number, lng: number, stationCode: string) => void;
   onTrainSelect: (train: Train) => void;
   externalStation?: TiplocData | null; // set when user clicks a station on the map
@@ -52,7 +54,7 @@ const fuzzySearchTiplocs = (query: string): TiplocData[] => {
   const scored = ALL_TIPLOCS
     .filter(t => t.Latitude && t.Longitude)               // only entries with valid coordinates
     .filter(t => !t.Tiploc.startsWith('ELOC'))            // exclude engineering locations
-    .filter(isPassengerStation)                            // only real passenger stations
+    .filter(isPassengerStation)                           // only real passenger stations
     .map(t => {
       const name = t.Name.toLowerCase();
       const code = t.Tiploc.toLowerCase();
@@ -119,13 +121,12 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 
 
 // main sidebar component
-const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarProps) => {
+const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, externalStation }: SidebarProps) => {
 
   // shared state
   const [searchMode, setSearchMode] = useState<SearchMode>('station');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [trains, setTrains] = useState<Train[]>([]);
   const [selectedTrainId, setSelectedTrainId] = useState<string | null>(null);
 
   // station search state
@@ -140,8 +141,28 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchGenRef = useRef(0); // tracks current search generation to cancel stale requests
+  const activeTiplocRef = useRef<string | null>(null); // tiploc code for auto-refresh polling
 
   const toast = useToast();
+
+
+  // auto-refresh: periodically re-fetch the station train list to keep statuses current
+  // the bulk station API returns stale lastReportedType values, so polling keeps them fresh
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const tiploc = activeTiplocRef.current;
+      if (!tiploc) return;
+
+      try {
+        const fresh = await trainApi.getTrainsAtStation(tiploc);
+        onTrainsChange(fresh);
+      } catch {
+        // silent fail, keep existing data and retry
+      }
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [onTrainsChange]);
 
 
   /**
@@ -151,9 +172,10 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
   const handleModeSwitch = (mode: SearchMode) => {
     if (mode === searchMode) return;
     searchGenRef.current++; // cancel any in-flight search
+    activeTiplocRef.current = null; // stop auto-refresh
     setSearchMode(mode);
     setSearchTerm('');
-    setTrains([]);
+    onTrainsChange([]);
     setSelectedTrainId(null);
     setActiveStation(null);
     setSearchedHeadcode(null);
@@ -189,7 +211,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node) &&
-          inputRef.current && !inputRef.current.contains(e.target as Node)) {
+        inputRef.current && !inputRef.current.contains(e.target as Node)) {
         setShowSuggestions(false);
       }
     };
@@ -203,7 +225,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
     const gen = ++searchGenRef.current; // new generation — stale requests will bail out
 
     setIsLoading(true);       // show loading spinner
-    setTrains([]);            // clear previous search results
+    onTrainsChange([]);       // clear previous search results
     setSelectedTrainId(null); // clear selected train
     setShowSuggestions(false);
     setActiveStation(stationName || tiplocCode);
@@ -235,14 +257,17 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
 
       onLocationSelect(lat, lng, tiplocCode.toUpperCase());
 
+      // store the active tiploc for auto-refresh polling
+      activeTiplocRef.current = tiplocCode.toUpperCase();
+
       // fetch train schedule (may return empty on staging API)
       try {
         const schedule = await trainApi.getTrainsAtStation(tiplocCode);
         if (gen !== searchGenRef.current) return; // stale
-        setTrains(schedule);
+        onTrainsChange(schedule);
       } catch {
         if (gen !== searchGenRef.current) return;
-        setTrains([]);
+        onTrainsChange([]);
       }
 
     } catch (error: unknown) {
@@ -259,7 +284,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
         setIsLoading(false);
       }
     }
-  }, [onLocationSelect, toast]);
+  }, [onLocationSelect, onTrainsChange, toast]);
 
 
   /**
@@ -280,8 +305,9 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
    */
   const executeTrainSearch = useCallback(async (headcode: string) => {
     const gen = ++searchGenRef.current; // new generation
+    activeTiplocRef.current = null; // stop station auto-refresh
     setIsLoading(true);
-    setTrains([]);
+    onTrainsChange([]);
     setSelectedTrainId(null);
     setSearchedHeadcode(headcode.toUpperCase());
 
@@ -324,7 +350,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
         });
       }
 
-      setTrains(matches);
+      onTrainsChange(matches);
 
       // auto-select if exactly one result
       if (matches.length === 1) {
@@ -347,7 +373,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
         setIsLoading(false);
       }
     }
-  }, [onTrainSelect, toast]);
+  }, [onTrainSelect, onTrainsChange, toast]);
 
 
   /**
@@ -454,10 +480,11 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
   // clear search and reset all state
   const handleClear = () => {
     searchGenRef.current++; // cancel any in-flight search
+    activeTiplocRef.current = null; // stop auto-refresh
     setSearchTerm('');
     setSuggestions([]);
     setShowSuggestions(false);
-    setTrains([]);
+    onTrainsChange([]);
     setSelectedTrainId(null);
     setActiveStation(null);
     setSearchedHeadcode(null);

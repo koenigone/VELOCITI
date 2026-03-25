@@ -11,25 +11,27 @@ function App() {
   const [mapTarget, setMapTarget] = useState<MapTarget | null>(null);
   const [selectedTrain, setSelectedTrain] = useState<Train | null>(null);
   const [searchedStation, setSearchedStation] = useState<string | null>(null);
+  const [trains, setTrains] = useState<Train[]>([]); // train list source, shared between sidebar and details panel
+  const [mapClickedStation, setMapClickedStation] = useState<TiplocData | null>(null); // station clicked on the map -> trigger search
 
-  // station clicked on the map — passed to sidebar so it triggers a search
-  const [mapClickedStation, setMapClickedStation] = useState<TiplocData | null>(null);
-
+  // live socket update
   const handleLiveTrainUpdate = useCallback((updatedTrain: Train) => {
     setSelectedTrain(current => {
       if (!current || current.trainId !== updatedTrain.trainId) {
         return current;
       }
-
       return updatedTrain;
     });
+
+    setTrains(current =>
+      current.map(t => t.trainId === updatedTrain.trainId ? updatedTrain : t)
+    );
   }, []);
 
-    const { liveStatus, lastUpdated, setLastUpdated } =useLiveSelectedTrain(selectedTrain, handleLiveTrainUpdate);
+  const { liveStatus, lastUpdated, setLastUpdated } = useLiveSelectedTrain(selectedTrain, handleLiveTrainUpdate);
 
 
-
-  // called when the sidebar executes a station search (both manual and map-triggered)
+  // called when the sidebar executes a station search
   const handleLocationSelect = useCallback((lat: number, lng: number, stationCode: string) => {
     setMapTarget({ lat, lng, zoom: 14 });
     setSelectedTrain(null);
@@ -37,7 +39,6 @@ function App() {
   }, []);
 
   // called when user clicks a station marker on the map
-  // instead of opening a separate panel, we tell the sidebar to search for it
   const handleStationSelect = useCallback((station: TiplocData) => {
     setSelectedTrain(null);
     setMapClickedStation(station);
@@ -58,6 +59,8 @@ function App() {
       sideContent=
       {
         <Sidebar
+          trains={trains}
+          onTrainsChange={setTrains}
           onLocationSelect={handleLocationSelect}
           onTrainSelect={handleTrainSelect}
           externalStation={mapClickedStation}
@@ -74,7 +77,7 @@ function App() {
       }
       panelContent=
       {
-                selectedTrain ? (
+        selectedTrain ? (
           <TrainDetailPanel
             train={selectedTrain}
             liveStatus={liveStatus}

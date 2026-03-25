@@ -8,10 +8,26 @@ export interface TrainStatus {
 
 /* determines the display status of a train based on its properties
    returns an object with the appropriate color, badge scheme, and label for UI display
+   priority: cancelled > late > terminated (only if journey time has realistically elapsed) > on time
+
+   the bulk station API often returns lastReportedType "TERMINATED" for trains that are
+   still running. we cross-reference against scheduledArrival to avoid false terminations:
+   a train can only be marked TERMINATED if its scheduled arrival + a delay buffer has passed.
 */
+const TERMINATED_BUFFER_MS = 60 * 60 * 1000; // 60 min buffer past scheduled arrival
+
+const isJourneyComplete = (train: Train): boolean => {
+  if (!train.scheduledArrival) return false;
+
+  const arrival = new Date(train.scheduledArrival).getTime();
+  if (isNaN(arrival)) return false;
+
+  return Date.now() > arrival + TERMINATED_BUFFER_MS;
+};
+
 export const getTrainStatus = (train: Train): TrainStatus => {
   if (train.cancelled) return { color: "red.600", badgeScheme: "red", label: "CANCELLED" };
-  if (train.lastReportedType === "TERMINATED") return { color: "gray.500", badgeScheme: "gray", label: "TERMINATED" };
+  if (isJourneyComplete(train)) return { color: "gray.500", badgeScheme: "gray", label: "TERMINATED" };
   if (train.lastReportedDelay > 4) return { color: "red.500", badgeScheme: "red", label: `${train.lastReportedDelay} MINS LATE` };
   return { color: "green.500", badgeScheme: "green", label: "ON TIME" };
 };
