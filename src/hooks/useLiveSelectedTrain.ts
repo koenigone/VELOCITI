@@ -120,7 +120,7 @@ const useLiveSelectedTrain = (
     };
   }, [selectedTrain?.trainId, selectedTrain?.activationId, selectedTrain?.scheduleId, selectedTrain?.headCode, onLiveUpdate]);
 
-  return { liveStatus };
+  return { liveStatus, lastUpdated, setLastUpdated };
 };
 
 export default useLiveSelectedTrain;
