@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box, Text, Flex, Spinner, Badge, Icon, IconButton,
   Tabs, TabList, Tab, TabPanels, TabPanel, VStack, HStack, Tooltip
 } from '@chakra-ui/react';
-import { FaTimes, FaClock } from 'react-icons/fa';
+import { FaTimes, FaClock, FaSyncAlt } from 'react-icons/fa';
 import { MdTrain, MdArrowForward } from 'react-icons/md';
 import { trainApi } from '../../api/api';
 import { getTiplocName } from '../../data/tiplocData';
@@ -16,7 +16,7 @@ interface TrainDetailPanelProps {
   train: Train;
   liveStatus: LiveTrackingStatus;
   lastUpdated: Date | null;
-  onLastUpdatedChange: (value: Date) => void; // NEW
+  onLastUpdatedChange: (value: Date) => void;
   onClose: () => void;
 }
 
@@ -120,20 +120,29 @@ const getLiveBadge = (status: LiveTrackingStatus) => {
 };
 
 
+// formats a Date object to a readable time string for the "last updated" display
+const formatLastUpdated = (date: Date | null): string => {
+  if (!date) return 'Not yet updated';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+};
+
+
 // main train detail panel component
-const TrainDetailPanel = ({train,liveStatus,lastUpdated,onLastUpdatedChange,onClose,}: TrainDetailPanelProps) => {
+const TrainDetailPanel = ({ train, liveStatus, lastUpdated, onLastUpdatedChange, onClose }: TrainDetailPanelProps) => {
 
   const [timeline, setTimeline] = useState<TimelineStop[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const scheduleRef = useRef<ScheduleStop[]>([]);
+  const prevLocationRef = useRef<string | undefined>(train.lastReportedLocation);
   const status = getTrainStatus(train);
   const liveBadge = getLiveBadge(liveStatus);
 
-
-  // shared fetch function for initial load + manual refresh
-  const fetchData = async () => {
-    setIsLoading(true);
+  // fetches both schedule and movement data, rebuilds timeline
+  const fetchFullData = useCallback(async (showSpinner: boolean) => {
+    if (showSpinner) setIsLoading(true);
+    else setIsRefreshing(true);
     setError(null);
 
     try {
@@ -144,13 +153,7 @@ const TrainDetailPanel = ({train,liveStatus,lastUpdated,onLastUpdatedChange,onCl
         ),
       ]);
 
-      console.log(
-        '[Velociti Detail] Schedule:',
-        schedule.length,
-        'stops | Movement:',
-        movements.length,
-        'events'
-      );
+      scheduleRef.current = schedule;
 
       const built = buildTimeline(schedule, movements, train);
       setTimeline(built);
@@ -158,27 +161,57 @@ const TrainDetailPanel = ({train,liveStatus,lastUpdated,onLastUpdatedChange,onCl
     } catch (err: unknown) {
       console.warn('[Velociti Detail] Failed to fetch journey data:', err);
       setError(getErrorMessage(err, 'Failed to load journey details'));
-      setTimeline(buildTimeline([], [], train)); // fallback
+
+      if (scheduleRef.current.length === 0) {
+        setTimeline(buildTimeline([], [], train));
+      }
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
-  };
+  }, [train.activationId, train.scheduleId, onLastUpdatedChange]);
 
-  // fetch schedule and movement data when train changes
+
+  // fetches only movement data and merges with cached schedule — used for live updates
+  const refreshMovements = useCallback(async () => {
+    // skip if we don't have a cached schedule yet
+    if (scheduleRef.current.length === 0) return;
+
+    try {
+      const movements = await trainApi.getTrainMovement(train.activationId, train.scheduleId);
+      const built = buildTimeline(scheduleRef.current, movements, train);
+      setTimeline(built);
+      onLastUpdatedChange(new Date());
+    } catch {
+      // movement refresh failed silently
+    }
+  }, [train.activationId, train.scheduleId, onLastUpdatedChange]);
+
+
+  // initial load when a different train is selected (keyed on activation/schedule IDs)
   useEffect(() => {
-    let cancelled = false;
+    scheduleRef.current = [];
+    prevLocationRef.current = train.lastReportedLocation;
+    fetchFullData(true);
+  }, [train.activationId, train.scheduleId]);
 
-    const run = async () => {
-      await fetchData();
-      if (cancelled) return;
-    };
 
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [train]);
+  // live update detection: when lastReportedLocation changes, re-fetch movements only
+  // this avoids hammering the schedule endpoint on every socket tick
+  useEffect(() => {
+    const currentLocation = train.lastReportedLocation;
 
+    if (currentLocation && currentLocation !== prevLocationRef.current) {
+      prevLocationRef.current = currentLocation;
+      refreshMovements();
+    }
+  }, [train.lastReportedLocation, refreshMovements]);
+
+
+  // manual refresh handler
+  const handleManualRefresh = () => {
+    fetchFullData(false);
+  };
 
 
   return (
@@ -250,25 +283,47 @@ const TrainDetailPanel = ({train,liveStatus,lastUpdated,onLastUpdatedChange,onCl
           />
         </Flex>
       </Box>
-            {/* manual refresh bar */}
-      <Box px={4} py={2} borderBottomWidth="1px" borderColor="gray.100" bg="white">
-        <Flex justify="space-between" align="center">
-          <Text fontSize="xs" color="gray.500">
-            Click refresh to reload train details
-          </Text>
+
+      {/* live info bar with last updated timestamp and manual refresh */}
+      <Box px={4} py={2} borderBottomWidth="1px" borderColor="gray.100" bg="gray.50" flexShrink={0}>
+        <Flex justify="space-between" align="center" gap={2}>
+          <Box flex={1} minW={0}>
+            {/* latest reported location and delay */}
+            {train.lastReportedLocation && (
+              <Text fontSize="xs" color="gray.600" isTruncated mb={0.5}>
+                <Text as="span" fontWeight="600">{train.lastReportedLocation}</Text>
+                {' · '}
+                <Text as="span" color={train.lastReportedDelay > 0 ? "orange.500" : "green.500"} fontWeight="600">
+                  {train.lastReportedDelay > 0
+                    ? `${train.lastReportedDelay} min${train.lastReportedDelay !== 1 ? 's' : ''} late`
+                    : 'On time'}
+                </Text>
+              </Text>
+            )}
+
+            {/* last updated timestamp */}
+            <HStack spacing={1.5}>
+              <Icon as={FaClock} color="gray.400" boxSize={2.5} />
+              <Text fontSize="2xs" color="gray.400">
+                Updated: <Text as="span" fontWeight="600" color="gray.500">{formatLastUpdated(lastUpdated)}</Text>
+              </Text>
+            </HStack>
+          </Box>
+
           <IconButton
             aria-label="Refresh train data"
             size="xs"
             colorScheme="blue"
             variant="outline"
-            icon={<FaClock />}
-            isLoading={isLoading}
-            onClick={fetchData}
+            icon={<FaSyncAlt />}
+            isLoading={isRefreshing}
+            onClick={handleManualRefresh}
+            flexShrink={0}
           />
         </Flex>
       </Box>
 
-      {/* tabs (right now we only have progress tab, opened for more)- */}
+      {/* tabs (right now we only have progress tab, open for more) */}
       <Tabs variant="enclosed" size="sm" colorScheme="blue" flex={1} display="flex" flexDirection="column" minH="0">
         <TabList borderBottomWidth="1px" borderColor="gray.200" bg="gray.50">
           <Tab fontWeight="600" fontSize="xs" _selected={{ bg: "white", color: "blue.600", borderBottomColor: "white" }}>
@@ -308,6 +363,10 @@ const TrainDetailPanel = ({train,liveStatus,lastUpdated,onLastUpdatedChange,onCl
                       stop={stop}
                       isFirst={index === 0}
                       isLast={index === timeline.length - 1}
+                      isLiveEvent={
+                        !!train.lastReportedLocation &&
+                        stop.name.toUpperCase() === train.lastReportedLocation.toUpperCase()
+                      }
                     />
                   ))}
                 </VStack>
@@ -321,33 +380,39 @@ const TrainDetailPanel = ({train,liveStatus,lastUpdated,onLastUpdatedChange,onCl
 };
 
 
-// component for rendering each stop in the timeline 
-const TimelineItem = ({ stop, isFirst, isLast }: { stop: TimelineStop; isFirst: boolean; isLast: boolean }) => {
+// component for rendering each stop in the timeline
+const TimelineItem = ({ stop, isFirst, isLast, isLiveEvent }: {
+  stop: TimelineStop;
+  isFirst: boolean;
+  isLast: boolean;
+  isLiveEvent: boolean;
+}) => {
 
-  // dot colour based on position in the timeline
-  const dotColor = isFirst ? "green.400" : isLast ? "red.400" : stop.isPass ? "blue.300" : "blue.500";
-  const dotSize = (isFirst || isLast) ? "10px" : stop.isPass ? "7px" : "9px";
+  // dot colour based on position in the timeline — live event takes priority
+  const dotColor = isLiveEvent ? "orange.400" : isFirst ? "green.400" : isLast ? "red.400" : stop.isPass ? "blue.300" : "blue.500";
+  const dotSize = isLiveEvent ? "12px" : (isFirst || isLast) ? "10px" : stop.isPass ? "7px" : "9px";
 
   // format times for display
   const scheduled = formatScheduleTime(stop.scheduledTime);
   const hasDelay = stop.variation !== null && stop.variation > 0;
 
   return (
-    <Flex px={4} minH="48px">
+    <Flex px={4} minH="48px" bg={isLiveEvent ? "orange.50" : "transparent"} transition="background 0.3s">
       <Flex direction="column" align="center" w="24px" flexShrink={0} mr={3}>
         {!isFirst && <Box w="2px" flex="1" bg="blue.100" minH="8px" />}
 
-        <Tooltip label={stop.isPass ? "Pass" : isFirst ? "Origin" : isLast ? "Destination" : "Stop"} fontSize="xs">
+        <Tooltip label={isLiveEvent ? "Live position" : stop.isPass ? "Pass" : isFirst ? "Origin" : isLast ? "Destination" : "Stop"} fontSize="xs">
           <Box
             w={dotSize}
             h={dotSize}
-            borderRadius={stop.isPass ? "1px" : "full"}
-            transform={stop.isPass ? "rotate(45deg)" : "none"}
+            borderRadius={stop.isPass && !isLiveEvent ? "1px" : "full"}
+            transform={stop.isPass && !isLiveEvent ? "rotate(45deg)" : "none"}
             bg={dotColor}
             border="2px solid"
-            borderColor={isFirst ? "green.200" : isLast ? "red.200" : "blue.100"}
+            borderColor={isLiveEvent ? "orange.200" : isFirst ? "green.200" : isLast ? "red.200" : "blue.100"}
             flexShrink={0}
             zIndex={1}
+            boxShadow={isLiveEvent ? "0 0 0 3px rgba(237, 137, 54, 0.3)" : "none"}
           />
         </Tooltip>
 
@@ -358,8 +423,8 @@ const TimelineItem = ({ stop, isFirst, isLast }: { stop: TimelineStop; isFirst: 
         <Flex align="center" gap={2} mb={1}>
           <Text
             fontSize="xs"
-            fontWeight={isFirst || isLast ? "700" : "600"}
-            color={isFirst || isLast ? "gray.800" : "gray.700"}
+            fontWeight={isFirst || isLast || isLiveEvent ? "700" : "600"}
+            color={isLiveEvent ? "orange.700" : isFirst || isLast ? "gray.800" : "gray.700"}
             isTruncated
           >
             {stop.name}
@@ -367,6 +432,11 @@ const TimelineItem = ({ stop, isFirst, isLast }: { stop: TimelineStop; isFirst: 
           <Badge fontSize="0.55em" colorScheme="gray" variant="subtle" fontFamily="mono" px={1}>
             {stop.tiploc}
           </Badge>
+          {isLiveEvent && (
+            <Badge fontSize="0.55em" colorScheme="orange" variant="subtle" px={1}>
+              LIVE
+            </Badge>
+          )}
         </Flex>
 
         {/* timing row */}
