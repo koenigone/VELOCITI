@@ -1,13 +1,17 @@
 import express from 'express';
 import http from 'http';
-import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { Server } from 'socket.io';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const server = http.createServer(app);
 
-const FRONTEND_ORIGIN = 'http://localhost:5173';
-const PORT = 3001;
+// Render assigns its own port via process.env.PORT (default 10000)
+const PORT = process.env.PORT || 3001;
+
 const API_BASE =
   process.env.VELOCITI_API_BASE_URL ||
   'https://traindata-stag-api.railsmart.io';
@@ -18,26 +22,36 @@ const API_KEY =
 
 const POLL_INTERVAL_MS = 15000;
 
-app.use(cors({ origin: FRONTEND_ORIGIN }));
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:3001',
+];
 
 const io = new Server(server, {
   cors: {
-    origin: FRONTEND_ORIGIN,
+    origin: ALLOWED_ORIGINS,
     methods: ['GET', 'POST'],
   },
 });
 
+
+// serve the built Vite frontend in production
+const distPath = path.join(__dirname, 'dist');
+app.use(express.static(distPath));
+
+
+// socket.io live train logic
 const activeSubscriptions = new Map();
 
 const normaliseLocation = (value = '') =>
   value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-const getJson = async (path) => {
+const getJson = async (apiPath) => {
   if (!API_KEY) {
     throw new Error('Missing API key for live update server');
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${API_BASE}${apiPath}`, {
     headers: {
       'X-ApiKey': API_KEY,
       Accept: 'application/json',
@@ -68,32 +82,19 @@ const getLatestMovementEvent = (movementData) => {
 };
 
 const findScheduleLocationMatch = (scheduleData, movementLocation) => {
-  if (!Array.isArray(scheduleData) || scheduleData.length === 0) {
-    return undefined;
-  }
-
-  if (!movementLocation) {
+  if (!Array.isArray(scheduleData) || !movementLocation) {
     return undefined;
   }
 
   const target = normaliseLocation(movementLocation);
 
   return scheduleData.find(
-    (stop) =>
-      normaliseLocation(stop.location) === target ||
-      normaliseLocation(stop.tiploc) === target
+    (stop) => normaliseLocation(stop.location) === target
   );
 };
 
 const buildLiveUpdate = async (subscription) => {
-  const {
-    trainId,
-    activationId,
-    scheduleId,
-    headCode,
-    originTiploc,
-    destinationTiploc,
-  } = subscription;
+  const { trainId, activationId, scheduleId, headCode } = subscription;
 
   const [scheduleData, movementData] = await Promise.all([
     getJson(`/api/ifmtrains/schedule/${activationId}/${scheduleId}`),
@@ -102,61 +103,30 @@ const buildLiveUpdate = async (subscription) => {
 
   const latestEvent = getLatestMovementEvent(movementData);
 
-  const firstStop = Array.isArray(scheduleData) && scheduleData.length > 0
-    ? scheduleData[0]
-    : undefined;
-
-  const lastStop = Array.isArray(scheduleData) && scheduleData.length > 0
-    ? scheduleData[scheduleData.length - 1]
-    : undefined;
-
   if (!latestEvent) {
     return {
       trainId,
       activationId,
       scheduleId,
       headCode,
-      originTiploc,
-      destinationTiploc,
-      lastReportedLocation: firstStop?.location || '',
-      lastReportedDelay: 0,
-      lastReportedType: 'NO_UPDATE',
-      lastReportedLatitude: firstStop?.latLong?.latitude,
-      lastReportedLongitude: firstStop?.latLong?.longitude,
     };
   }
 
-  const eventType = String(latestEvent.eventType || '').toUpperCase();
   const matchedStop = findScheduleLocationMatch(scheduleData, latestEvent.location);
-
-  let fallbackStop = matchedStop;
-
-  if (!fallbackStop) {
-    if (eventType === 'ACTIVATED' || eventType === 'ORIGIN' || eventType === 'DEPARTURE') {
-      fallbackStop = firstStop;
-    } else if (eventType === 'ARRIVAL' || eventType === 'DESTINATION') {
-      fallbackStop = lastStop;
-    }
-  }
 
   return {
     trainId,
     activationId,
     scheduleId,
     headCode,
-    originTiploc,
-    destinationTiploc,
-    lastReportedLocation:
-      latestEvent.location ||
-      fallbackStop?.location ||
-      '',
+    lastReportedLocation: latestEvent.location,
     lastReportedDelay:
       typeof latestEvent.variation === 'number' ? latestEvent.variation : 0,
     lastReportedType: latestEvent.eventType,
     actualDeparture: latestEvent.actualDeparture,
     actualArrival: latestEvent.actualArrival,
-    lastReportedLatitude: fallbackStop?.latLong?.latitude,
-    lastReportedLongitude: fallbackStop?.latLong?.longitude,
+    lastReportedLatitude: matchedStop?.latLong?.latitude,
+    lastReportedLongitude: matchedStop?.latLong?.longitude,
   };
 };
 
@@ -213,10 +183,11 @@ io.on('connection', (socket) => {
   });
 });
 
-app.get('/', (_req, res) => {
-  res.send('VELOCITI live socket server is running');
+// fallback: any non-API/non-socket route serves
+app.use((_req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
-server.listen(PORT, () => {
-  console.log(`Socket server running on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`VELOCITI server running on port ${PORT}`);
 });

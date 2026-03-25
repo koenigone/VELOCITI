@@ -19,7 +19,9 @@ interface LiveTrainUpdate {
   lastReportedLongitude?: number;
 }
 
-const SOCKET_URL = import.meta.env.VITE_VELOCITI_SOCKET_URL;
+// in dev, VITE_VELOCITI_SOCKET_URL points to the local socket server (e.g. http://localhost:3001)
+// in production, it's left empty/unset — socket.io-client auto-connects to the same origin
+const SOCKET_URL = import.meta.env.VITE_VELOCITI_SOCKET_URL || undefined;
 
 
 // merges live socket updates into the existing selected train object
@@ -44,33 +46,27 @@ const useLiveSelectedTrain = (
   selectedTrain: Train | null,
   onLiveUpdate: (updatedTrain: Train) => void
 ) => {
-  const [socketStatus, setSocketStatus] = useState<LiveTrackingStatus>('idle');
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [liveStatus, setLiveStatus] = useState<LiveTrackingStatus>('idle');
   const socketRef = useRef<Socket | null>(null);
   const selectedTrainRef = useRef<Train | null>(selectedTrain);
-  const trainId = selectedTrain?.trainId;
-  const activationId = selectedTrain?.activationId;
-  const scheduleId = selectedTrain?.scheduleId;
-  const headCode = selectedTrain?.headCode;
 
   useEffect(() => {
     selectedTrainRef.current = selectedTrain;
   }, [selectedTrain]);
 
   useEffect(() => {
-    if (!trainId || !activationId || !scheduleId || !SOCKET_URL) {
+    if (!selectedTrain) {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
+      setLiveStatus('idle');
       return;
     }
 
-    queueMicrotask(() => {
-      setSocketStatus('connecting');
-    });
+    setLiveStatus('connecting');
 
-    const socket = io(SOCKET_URL, {
+    const socket = io(SOCKET_URL || window.location.origin, {
       transports: ['websocket'],
       reconnection: true,
     });
@@ -78,30 +74,28 @@ const useLiveSelectedTrain = (
     socketRef.current = socket;
 
     const subscription = {
-      trainId,
-      activationId,
-      scheduleId,
-      headCode,
+      trainId: selectedTrain.trainId,
+      activationId: selectedTrain.activationId,
+      scheduleId: selectedTrain.scheduleId,
+      headCode: selectedTrain.headCode,
     };
 
     // these event names should match the backend socket contract
     socket.on('connect', () => {
-      queueMicrotask(() => {
-      setSocketStatus('connecting');
-    });
+      setLiveStatus('live');
       socket.emit('train:subscribe', subscription);
     });
 
     socket.on('disconnect', () => {
-      setSocketStatus('disconnected');
+      setLiveStatus('disconnected');
     });
 
     socket.io.on('reconnect_attempt', () => {
-      setSocketStatus('reconnecting');
+      setLiveStatus('reconnecting');
     });
 
     socket.on('connect_error', () => {
-      setSocketStatus('error');
+      setLiveStatus('error');
     });
 
     socket.on('train:update', (payload: LiveTrainUpdate) => {
@@ -114,14 +108,7 @@ const useLiveSelectedTrain = (
 
       if (!sameTrain) return;
 
-      setSocketStatus('live');
-      const merged = mergeLiveTrain(activeTrain, payload); 
-      setLastUpdated(new Date());                          
-      onLiveUpdate(merged);  
-    });
-
-    socket.on('live:error', () => {
-      setSocketStatus('error');
+      onLiveUpdate(mergeLiveTrain(activeTrain, payload));
     });
 
     return () => {
@@ -129,16 +116,9 @@ const useLiveSelectedTrain = (
       socket.removeAllListeners();
       socket.disconnect();
       socketRef.current = null;
-      setSocketStatus('idle');
-      setLastUpdated(null);
+      setLiveStatus('idle');
     };
-  }, [trainId, activationId, scheduleId, headCode, onLiveUpdate]);
-
-  const liveStatus: LiveTrackingStatus = !trainId || !activationId || !scheduleId
-    ? 'idle'
-    : !SOCKET_URL
-      ? 'unavailable'
-      : socketStatus;
+  }, [selectedTrain?.trainId, selectedTrain?.activationId, selectedTrain?.scheduleId, selectedTrain?.headCode, onLiveUpdate]);
 
   return { liveStatus, lastUpdated, setLastUpdated };
 };

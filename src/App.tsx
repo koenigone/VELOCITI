@@ -3,7 +3,6 @@ import Layout from './layout';
 import Sidebar from './components/layout/sidebar';
 import MapArea from './components/map/mapArea';
 import TrainDetailPanel from './components/layout/trainDetailPanel';
-import StationDetailPanel from './components/layout/stationDetailPanel';
 import useLiveSelectedTrain from './hooks/useLiveSelectedTrain';
 import type { MapTarget } from './components/map/mapArea';
 import type { Train, TiplocData } from './types';
@@ -11,8 +10,10 @@ import type { Train, TiplocData } from './types';
 function App() {
   const [mapTarget, setMapTarget] = useState<MapTarget | null>(null);
   const [selectedTrain, setSelectedTrain] = useState<Train | null>(null);
-  const [selectedStation, setSelectedStation] = useState<TiplocData | null>(null);
   const [searchedStation, setSearchedStation] = useState<string | null>(null);
+
+  // station clicked on the map — passed to sidebar so it triggers a search
+  const [mapClickedStation, setMapClickedStation] = useState<TiplocData | null>(null);
 
   const handleLiveTrainUpdate = useCallback((updatedTrain: Train) => {
     setSelectedTrain(current => {
@@ -28,38 +29,29 @@ function App() {
 
 
 
-  // called when user selects a station from the sidebar search
-  const handleLocationSelect = (lat: number, lng: number, stationCode: string) => {
+  // called when the sidebar executes a station search (both manual and map-triggered)
+  const handleLocationSelect = useCallback((lat: number, lng: number, stationCode: string) => {
     setMapTarget({ lat, lng, zoom: 14 });
     setSelectedTrain(null);
-    setSelectedStation(null);
     setSearchedStation(stationCode);
-  };
+  }, []);
 
   // called when user clicks a station marker on the map
-  const handleStationSelect = (station: TiplocData) => {
-    setMapTarget({ lat: station.Latitude, lng: station.Longitude, zoom: 14 });
+  // instead of opening a separate panel, we tell the sidebar to search for it
+  const handleStationSelect = useCallback((station: TiplocData) => {
     setSelectedTrain(null);
-    setSelectedStation(station);
-    setSearchedStation(station.Tiploc);
-  };
+    setMapClickedStation(station);
+  }, []);
 
-  // called when user clicks a train card in the sidebar or station panel
-  const handleTrainSelect = (train: Train) => {
-    setSelectedStation(null);
+  // called when user clicks a train card in the sidebar
+  const handleTrainSelect = useCallback((train: Train) => {
     setSelectedTrain(train);
-  };
+  }, []);
 
   // called when user closes the train detail panel
-  const handleCloseTrainPanel = () => {
+  const handleCloseTrainPanel = useCallback(() => {
     setSelectedTrain(null);
-  };
-
-  // called when user closes the station detail panel
-  const handleCloseStationPanel = () => {
-    setSelectedStation(null);
-    setSearchedStation(null);
-  };
+  }, []);
 
   return (
     <Layout
@@ -68,6 +60,7 @@ function App() {
         <Sidebar
           onLocationSelect={handleLocationSelect}
           onTrainSelect={handleTrainSelect}
+          externalStation={mapClickedStation}
         />
       }
       mapContent=
@@ -88,13 +81,6 @@ function App() {
             lastUpdated={lastUpdated}
             onLastUpdatedChange={setLastUpdated}
             onClose={handleCloseTrainPanel}
-          />
-        ) : selectedStation ? (
-
-          <StationDetailPanel
-            station={selectedStation}
-            onClose={handleCloseStationPanel}
-            onTrainSelect={handleTrainSelect}
           />
         ) : undefined
       }

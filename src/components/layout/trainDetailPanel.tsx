@@ -21,11 +21,6 @@ interface TrainDetailPanelProps {
 }
 
 
-
-// normalises location strings so movement events can match schedule stops more reliably
-const normaliseLocation = (value = '') => value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-
 /* builds the timeline by merging schedule stops with movement events
    schedule gives us: ordered route, tiplocs, lat/lng, planned times
    movement gives us: actual times and variation (delay) at each location
@@ -67,7 +62,7 @@ const buildTimeline = (
   // index movement events by location name (uppercased) for fast lookup
   const movementMap = new Map<string, MovementEvent>();
   for (const m of movements) {
-    movementMap.set(normaliseLocation(m.location), m);
+    movementMap.set(m.location.toUpperCase(), m);
   }
 
   // map each schedule stop to a timeline entry, enriching with movement data where available
@@ -77,7 +72,7 @@ const buildTimeline = (
     const scheduledTime = stop.departure || stop.arrival || stop.pass || null;
 
     // try to match this stop to a movement event by location name
-    const movement = movementMap.get(normaliseLocation(stop.location));
+    const movement = movementMap.get(stop.location.toUpperCase());
 
     return {
       tiploc: stop.tiploc,
@@ -273,42 +268,6 @@ const TrainDetailPanel = ({train,liveStatus,lastUpdated,onLastUpdatedChange,onCl
         </Flex>
       </Box>
 
-      {/* live summary */}
-      <Box px={4} py={3} borderBottomWidth="1px" borderColor="gray.100" bg="blue.50">
-        <VStack align="stretch" spacing={1}>
-          <HStack justify="space-between" spacing={3}>
-            <Text fontSize="xs" fontWeight="700" color="gray.600">Latest location</Text>
-            <Text fontSize="xs" color="gray.800" fontWeight="600" textAlign="right">
-              {train.lastReportedLocation || 'Waiting for live update'}
-            </Text>
-          </HStack>
-
-          <HStack justify="space-between" spacing={3}>
-            <Text fontSize="xs" fontWeight="700" color="gray.600">Event type</Text>
-            <Text fontSize="xs" color="gray.800" fontWeight="600" textTransform="capitalize">
-              {train.lastReportedType ? train.lastReportedType.toLowerCase() : 'Unknown'}
-            </Text>
-          </HStack>
-
-          <HStack justify="space-between" spacing={3}>
-            <Text fontSize="xs" fontWeight="700" color="gray.600">Delay</Text>
-            <Text fontSize="xs" color={train.lastReportedDelay > 0 ? 'orange.500' : 'green.500'} fontWeight="700">
-              {train.lastReportedDelay > 0 ? `${train.lastReportedDelay} min late` : 'On time'}
-            </Text>
-          </HStack>
-
-          <HStack justify="space-between" spacing={3}>
-            <Text fontSize="xs" fontWeight="700" color="gray.600">Last updated</Text>
-            <Text fontSize="xs" color="gray.800" fontWeight="600">
-              {lastUpdated
-                ? lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                : 'Waiting for update'}
-            </Text>
-          </HStack>
-        </VStack>
-      </Box>
-
-
       {/* tabs (right now we only have progress tab, opened for more)- */}
       <Tabs variant="enclosed" size="sm" colorScheme="blue" flex={1} display="flex" flexDirection="column" minH="0">
         <TabList borderBottomWidth="1px" borderColor="gray.200" bg="gray.50">
@@ -325,7 +284,7 @@ const TrainDetailPanel = ({train,liveStatus,lastUpdated,onLastUpdatedChange,onCl
                 {train.originLocation || train.originTiploc} → {train.destinationLocation || train.destinationTiploc}
               </Text>
               {timeline.length > 2 && (
-                <Text fontSize="xs" color="gray.400">{timeline.length} stops</Text>
+                <Text fontSize="xs" color="gray.700">{timeline.length} stops</Text>
               )}
             </Flex>
 

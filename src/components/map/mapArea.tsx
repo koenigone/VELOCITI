@@ -21,19 +21,6 @@ const LIVE_TRAIN_ICON = L.divIcon({
   iconAnchor: [11, 11],
 });
 
-// normalises location strings so live updates can match route stops more reliably
-const normaliseLocation = (value = '') => value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-const normaliseEventType = (value = '') => value.trim().toUpperCase().replace(/[^A-Z]/g, '');
-
-const getStopCoords = (stop?: ScheduleStop | null): [number, number] | null => {
-  if (stop?.latLong?.latitude && stop?.latLong?.longitude) {
-    return [stop.latLong.latitude, stop.latLong.longitude];
-  }
-
-  return null;
-};
-
 
 // interfaces and props
 export interface MapTarget {
@@ -89,83 +76,25 @@ const getTrainMarkerPosition = (
     return [selectedTrain.lastReportedLatitude, selectedTrain.lastReportedLongitude];
   }
 
-  const reportedLocation = normaliseLocation(selectedTrain.lastReportedLocation);
-  const reportedType = normaliseEventType(selectedTrain.lastReportedType);
+  const reportedLocation = selectedTrain.lastReportedLocation?.trim().toUpperCase();
+  if (!reportedLocation) return null;
 
-  if (reportedLocation) {
-    const scheduleMatch = scheduleStops.find(stop => {
-      const stopName = normaliseLocation(stop.location);
-      const stopTiploc = normaliseLocation(stop.tiploc);
-      return stopName === reportedLocation || stopTiploc === reportedLocation;
-    });
+  const scheduleMatch = scheduleStops.find(stop => {
+    const stopName = stop.location?.trim().toUpperCase();
+    const stopTiploc = stop.tiploc?.trim().toUpperCase();
+    return stopName === reportedLocation || stopTiploc === reportedLocation;
+  });
 
-    if (scheduleMatch?.latLong?.latitude && scheduleMatch?.latLong?.longitude) {
-      return [scheduleMatch.latLong.latitude, scheduleMatch.latLong.longitude];
-    }
-
-    const localMatch = findTiploc(reportedLocation);
-    if (localMatch?.Latitude && localMatch?.Longitude) {
-      return [localMatch.Latitude, localMatch.Longitude];
-    }
+  if (scheduleMatch?.latLong?.latitude && scheduleMatch?.latLong?.longitude) {
+    return [scheduleMatch.latLong.latitude, scheduleMatch.latLong.longitude];
   }
 
-  if (reportedType === 'ACTIVATED' || reportedType === 'ORIGIN' || reportedType === 'DEPARTURE') {
-    const firstStopCoords = getStopCoords(scheduleStops[0]);
-    if (firstStopCoords) return firstStopCoords;
-
-    const origin = findTiploc(selectedTrain.originTiploc);
-    if (origin?.Latitude && origin?.Longitude) {
-      return [origin.Latitude, origin.Longitude];
-    }
-  }
-
-  if (reportedType === 'DESTINATION' || reportedType === 'ARRIVAL') {
-    const lastStopCoords = getStopCoords(scheduleStops[scheduleStops.length - 1]);
-    if (lastStopCoords) return lastStopCoords;
-
-    const destination = findTiploc(selectedTrain.destinationTiploc);
-    if (destination?.Latitude && destination?.Longitude) {
-      return [destination.Latitude, destination.Longitude];
-    }
-  }
-
-  const originStopCoords = getStopCoords(scheduleStops[0]);
-  if (originStopCoords) {
-    return originStopCoords;
-  }
-
-  const origin = findTiploc(selectedTrain.originTiploc);
-  if (origin?.Latitude && origin?.Longitude) {
-    return [origin.Latitude, origin.Longitude];
-  }
-
-  const destinationStopCoords = getStopCoords(scheduleStops[scheduleStops.length - 1]);
-  if (destinationStopCoords) {
-    return destinationStopCoords;
-  }
-
-  const destination = findTiploc(selectedTrain.destinationTiploc);
-  if (destination?.Latitude && destination?.Longitude) {
-    return [destination.Latitude, destination.Longitude];
+  const localMatch = findTiploc(reportedLocation);
+  if (localMatch?.Latitude && localMatch?.Longitude) {
+    return [localMatch.Latitude, localMatch.Longitude];
   }
 
   return null;
-};
-
-const getDelayLabel = (delay?: number) => {
-  if (typeof delay !== 'number' || Number.isNaN(delay)) {
-    return 'Delay unavailable';
-  }
-
-  if (delay === 0) {
-    return 'On time';
-  }
-
-  if (delay > 0) {
-    return `${delay} min late`;
-  }
-
-  return `${Math.abs(delay)} min early`;
 };
 
 
@@ -201,8 +130,6 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
             validStops.map(s => [s.latLong.latitude, s.latLong.longitude] as [number, number])
           );
           map.fitBounds(bounds, { padding: [50, 50] });
-        } else if (validStops.length === 1) {
-          map.flyTo([validStops[0].latLong.latitude, validStops[0].latLong.longitude], 14);
         }
 
       } catch (err) {
@@ -233,17 +160,6 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
             [destination.Latitude, destination.Longitude]
           ]);
           map.fitBounds(bounds, { padding: [50, 50] });
-        } else if (!cancelled && origin?.Latitude && origin?.Longitude) {
-          setScheduleStops([
-            {
-              tiploc: origin.Tiploc,
-              location: origin.Name,
-              latLong: { latitude: origin.Latitude, longitude: origin.Longitude },
-              departure: ''
-            }
-          ]);
-
-          map.flyTo([origin.Latitude, origin.Longitude], 14);
         }
       }
     };
@@ -251,6 +167,8 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
     fetchRoute();
     return () => { cancelled = true; };
   }, [selectedTrain.activationId, selectedTrain.scheduleId, selectedTrain.originTiploc, selectedTrain.destinationTiploc, map]);
+
+  if (scheduleStops.length < 2) return null;
 
   // build positions array for the polyline
   const positions: [number, number][] = scheduleStops.map(
@@ -262,32 +180,30 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
   return (
     <>
       {/* route line connecting all stops */}
-      {positions.length >= 2 && (
-        <Polyline
-          positions={positions}
-          pathOptions={{
-            color: "#e53e3e",
-            weight: 4,
-            opacity: 0.85
-          }}
-        />
-      )}
+      <Polyline
+        positions={positions}
+        pathOptions={{
+          color: "#e53e3e",
+          weight: 4,
+          opacity: 0.85
+        }}
+      />
 
       {/* selected train live marker */}
       {markerPosition && (
-        <Marker position={markerPosition} icon={LIVE_TRAIN_ICON} zIndexOffset={1000}>
+        <Marker position={markerPosition} icon={LIVE_TRAIN_ICON}>
           <Tooltip direction="top" offset={[0, -8]}>
             <div style={{ fontFamily: 'system-ui', fontSize: '12px' }}>
               <strong>{selectedTrain.headCode}</strong><br />
-              <small>{selectedTrain.lastReportedLocation || selectedTrain.originLocation || 'Live position'}</small><br />
-              <small>{selectedTrain.lastReportedType || 'UPDATE'} · {getDelayLabel(selectedTrain.lastReportedDelay)}</small>
+              <small>{selectedTrain.lastReportedLocation || 'Live position'}</small><br />
+              <small>{selectedTrain.lastReportedType || 'UPDATE'} · {selectedTrain.lastReportedDelay} min late</small>
             </div>
           </Tooltip>
         </Marker>
       )}
 
       {/* stop markers along the route */}
-      {positions.length >= 2 && scheduleStops.map((stop, index) => {
+      {scheduleStops.map((stop, index) => {
         const isFirst = index === 0;
         const isLast = index === scheduleStops.length - 1;
         const isPass = !!stop.pass;
@@ -339,6 +255,8 @@ const SEARCHED_STATION_STYLE: L.CircleMarkerOptions = { // custom style for sear
 };
 
 // layer to show tiploc stations, either all or just the searched station
+// uses a ref for onStationSelect to prevent the entire layer being torn down
+// and rebuilt on every parent re-render (which was causing the memory leak / grey screen)
 const TiplocLayer = ({
   visible,
   searchedStation,
@@ -350,6 +268,12 @@ const TiplocLayer = ({
 }) => {
   const map = useMap();
   const layerRef = useRef<L.LayerGroup | null>(null);
+
+  // keep callback in a ref so it's always current without triggering the effect
+  const onStationSelectRef = useRef(onStationSelect);
+  useEffect(() => {
+    onStationSelectRef.current = onStationSelect;
+  });
 
   useEffect(() => {
     if (!map) return; // safety check for map availability
@@ -367,6 +291,7 @@ const TiplocLayer = ({
     // clear existing layer before adding new markers
     if (layerRef.current) {
       map.removeLayer(layerRef.current);
+      layerRef.current = null;
     }
 
     // if there are no tiplocs to render, exit early
@@ -390,7 +315,7 @@ const TiplocLayer = ({
         </div>
       `)
         .on('click', () => {
-          onStationSelect?.(t);
+          onStationSelectRef.current?.(t);
         });
     }).filter((m): m is L.CircleMarker => m !== null);
 
@@ -399,9 +324,12 @@ const TiplocLayer = ({
     map.addLayer(layerRef.current);
 
     return () => { // cleanup function to remove layer when unmounting or before next render
-      if (layerRef.current) map.removeLayer(layerRef.current);
+      if (layerRef.current) {
+        map.removeLayer(layerRef.current);
+        layerRef.current = null;
+      }
     };
-  }, [map, visible, searchedStation, onStationSelect]);
+  }, [map, visible, searchedStation]); // onStationSelect deliberately excluded — accessed via ref
 
   return null;
 };
@@ -445,7 +373,7 @@ const MapArea = ({
         zoom={DEFAULT_ZOOM}
         style={{ height: "100%", width: "100%" }}
         scrollWheelZoom
-        zoomControl={false}
+        zoomControl={true}
         preferCanvas
       >
         <MapController
