@@ -466,7 +466,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
 
 
   return (
-    <Box h="full" display="flex" flexDirection="column" bg="white" borderRight="1px" borderColor="gray.200">
+    <Box h="full" display="flex" flexDirection="column" bg="white" maxWidth="400px" borderRight="1px" borderColor="gray.200">
 
       {/* search mode tabs */}
       <Flex borderBottomWidth="1px" borderColor="gray.200" bg="white">

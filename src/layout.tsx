@@ -21,7 +21,7 @@ const Layout = ({ sideContent, mapContent, panelContent }: LayoutProps) => {
                 <Box
                     w={{ base: "300px", md: "30%" }}
                     minW="320px"
-                    maxW="450px"
+                    maxW="400px"
                     bg="white"
                     borderRightWidth="1px"
                     borderColor="gray.200"
