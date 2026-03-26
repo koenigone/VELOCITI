@@ -2,7 +2,7 @@ import 'leaflet/dist/leaflet.css';
 import { useState, useEffect, useRef } from 'react';
 import { Box, Spinner } from '@chakra-ui/react';
 
-import { MapContainer, TileLayer, useMap, Polyline, CircleMarker, Tooltip, Marker } from 'react-leaflet';
+import { MapContainer, TileLayer, useMap, Polyline, Tooltip, Marker } from 'react-leaflet';
 import L from 'leaflet';
 
 import { ALL_TIPLOCS, findTiploc } from '../../data/tiplocData';
@@ -179,15 +179,31 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
 
   return (
     <>
-      {/* route line connecting all stops */}
-      <Polyline
-        positions={positions}
-        pathOptions={{
-          color: "#e53e3e",
-          weight: 4,
-          opacity: 0.85
-        }}
-      />
+      {positions.map((pos, index) => {
+  if (index === 0) return null;
+
+  const prev = positions[index - 1];
+
+  // split route into segments
+  const progress = index / positions.length;
+
+  let color = "#00ff88"; // green
+
+  if (progress > 0.7) color = "#e53e3e"; // red
+  else if (progress > 0.4) color = "#f6ad55"; // orange
+
+  return (
+    <Polyline
+      key={index}
+      positions={[prev, pos]}
+      pathOptions={{
+        color,
+        weight: 7,
+        opacity: 0.9
+      }}
+    />
+  );
+   })}
 
       {/* selected train live marker */}
       {markerPosition && (
@@ -204,32 +220,37 @@ const RouteRenderer = ({ selectedTrain }: { selectedTrain: Train }) => {
 
       {/* stop markers along the route */}
       {scheduleStops.map((stop, index) => {
-        const isFirst = index === 0;
-        const isLast = index === scheduleStops.length - 1;
-        const isPass = !!stop.pass;
-
         return (
-          <CircleMarker
-            key={`${stop.tiploc}-${index}`}
-            center={[stop.latLong.latitude, stop.latLong.longitude]}
-            radius={isFirst || isLast ? 6 : isPass ? 3 : 5}
-            pathOptions={{
-              color: isFirst ? "#38a169" : isLast ? "#e53e3e" : isPass ? "#90cdf4" : "#f6ad55",
-              fillColor: isFirst ? "#48bb78" : isLast ? "#fc8181" : isPass ? "#bee3f8" : "#fbd38d",
-              fillOpacity: 1,
-              weight: isFirst || isLast ? 2 : 1
-            }}
-          >
-            <Tooltip direction="top" offset={[0, -8]}>
-              <div style={{ fontFamily: "system-ui", fontSize: "12px" }}>
-                <strong>{stop.location}</strong><br />
-                <small style={{ color: "#718096" }}>{stop.tiploc}</small>
-                {stop.departure && <><br /><small>Depart: {stop.departure}</small></>}
-                {stop.arrival && <><br /><small>Arrive: {stop.arrival}</small></>}
-                {stop.pass && <><br /><small>Pass: {stop.pass}</small></>}
-              </div>
-            </Tooltip>
-          </CircleMarker>
+          <Marker
+          key={`${stop.tiploc}-${index}`}
+          position={[stop.latLong.latitude, stop.latLong.longitude]}
+          icon={L.divIcon({
+          className: '',
+          html: `
+          <div style="
+          width: 28px;
+          height: 28px;
+          border-radius: 9999px;
+          background: ${index === 0 ? '#00ff88' : index === scheduleStops.length - 1 ? '#e53e3e' : '#f6ad55'};
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: bold;
+          font-size: 12px;
+          border: 2px solid white;
+          ">
+        ${index + 1}
+        </div>
+    `,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  })}
+>
+  <Tooltip>
+    <strong>{stop.location}</strong>
+  </Tooltip>
+</Marker>
         );
       })}
     </>

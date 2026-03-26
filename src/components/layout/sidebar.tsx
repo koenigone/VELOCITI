@@ -22,7 +22,8 @@ type SearchMode = 'station' | 'train';
 interface SidebarProps {
   onLocationSelect: (lat: number, lng: number, stationCode: string) => void;
   onTrainSelect: (train: Train) => void;
-  externalStation?: TiplocData | null; // set when user clicks a station on the map
+  externalStation?: TiplocData | null; 
+  mobileView?: "search" | "station" | "train"; 
 }
 
 
@@ -119,8 +120,9 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 
 
 // main sidebar component
-const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarProps) => {
+const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation, mobileView }: SidebarProps) => {
 
+  if (mobileView === "train") return null;
   // shared state
   const [searchMode, setSearchMode] = useState<SearchMode>('station');
   const [searchTerm, setSearchTerm] = useState('');
@@ -453,7 +455,7 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
 
   // clear search and reset all state
   const handleClear = () => {
-    searchGenRef.current++; // cancel any in-flight search
+    searchGenRef.current++; 
     setSearchTerm('');
     setSuggestions([]);
     setShowSuggestions(false);
@@ -462,12 +464,11 @@ const Sidebar = ({ onLocationSelect, onTrainSelect, externalStation }: SidebarPr
     setActiveStation(null);
     setSearchedHeadcode(null);
     lastExternalTiplocRef.current = null;
+    setSearchMode('station');
   };
-
 
   return (
     <Box h="full" display="flex" flexDirection="column" bg="white" borderRight="1px" borderColor="gray.200">
-
       {/* search mode tabs */}
       <Flex borderBottomWidth="1px" borderColor="gray.200" bg="white">
         <SearchTab label="Station" icon={FaMapMarkerAlt} isActive={searchMode === 'station'} onClick={() => handleModeSwitch('station')} />

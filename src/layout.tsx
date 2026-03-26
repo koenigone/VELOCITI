@@ -1,5 +1,7 @@
-import { Flex, Box } from '@chakra-ui/react';
+import { Flex, Box} from '@chakra-ui/react';
 import Header from './components/layout/header';
+import { useBreakpointValue } from '@chakra-ui/react';
+import BottomPanel from './components/mobile/BottomPanel';
 
 interface LayoutProps {
     sideContent: React.ReactNode;
@@ -8,40 +10,65 @@ interface LayoutProps {
 }
 
 const Layout = ({ sideContent, mapContent, panelContent }: LayoutProps) => {
+
+    const isMobile = useBreakpointValue({ base: true, md: false });
+
     return (
-        <Flex direction="column" h="100vh" w="full" overflow="hidden">
+  <Flex direction="column" h="100vh" w="full" overflow="hidden">
 
-            {/* header */}
-            <Header />
+    <Header />
 
-            {/* main content: sidebar on left, map content on right  */}
-            <Flex flex="1" as="main" overflow="hidden">
+    {/* MOBILE LAYOUT */}
+    {isMobile ? (
+  <Box flex="1" position="relative">
 
-                {/* sidebar */}
-                <Box
-                    w={{ base: "300px", md: "30%" }}
-                    minW="320px"
-                    maxW="450px"
-                    bg="white"
-                    borderRightWidth="1px"
-                    borderColor="gray.200"
-                    shadow="xl"
-                    zIndex="10"
-                >
-                    {sideContent}
-                </Box>
+    {/* MAP BACKGROUND */}
+    <Box h="100%" w="100%">
+      {mapContent}
+    </Box>
 
-                {/* map content */}
-                <Box flex="1" position="relative">
-                    {mapContent}
-                </Box>
+    {/* BOTTOM PANEL (OVERLAY) */}
+    <Box
+      position="absolute"
+      bottom="0"
+      left="0"
+      right="0"
+      h="60%"
+      zIndex="1000"
+    >
+      <BottomPanel>
+        {panelContent ? panelContent : sideContent}
+      </BottomPanel>
+    </Box>
 
-                {/* train detail panel (right side) */}
-                {panelContent && panelContent}
+    </Box>
+    ): (
 
-            </Flex>
-        </Flex>
-    );
+      <Flex flex="1" as="main" overflow="hidden">
+
+        <Box
+          w={{ base: "300px", md: "30%" }}
+          minW="320px"
+          maxW="450px"
+          bg="white"
+          borderRightWidth="1px"
+          borderColor="gray.200"
+          shadow="xl"
+          zIndex="10"
+        >
+          {sideContent}
+        </Box>
+
+        <Box flex="1" position="relative">
+          {mapContent}
+        </Box>
+
+        {panelContent && panelContent}
+
+      </Flex>
+    )}
+  </Flex>
+);
 }
 
 export default Layout;

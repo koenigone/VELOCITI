@@ -15,6 +15,9 @@ function App() {
   // station clicked on the map — passed to sidebar so it triggers a search
   const [mapClickedStation, setMapClickedStation] = useState<TiplocData | null>(null);
 
+  const [mobileView, setMobileView] = useState<"search" |"station" | "train">("search"); 
+
+
   const handleLiveTrainUpdate = useCallback((updatedTrain: Train) => {
     setSelectedTrain(current => {
       if (!current || current.trainId !== updatedTrain.trainId) {
@@ -27,29 +30,28 @@ function App() {
 
   const { liveStatus } = useLiveSelectedTrain(selectedTrain, handleLiveTrainUpdate);
 
-  // called when the sidebar executes a station search (both manual and map-triggered)
   const handleLocationSelect = useCallback((lat: number, lng: number, stationCode: string) => {
     setMapTarget({ lat, lng, zoom: 14 });
     setSelectedTrain(null);
     setSearchedStation(stationCode);
+    setMobileView("station");
   }, []);
 
-  // called when user clicks a station marker on the map
-  // instead of opening a separate panel, we tell the sidebar to search for it
   const handleStationSelect = useCallback((station: TiplocData) => {
     setSelectedTrain(null);
     setMapClickedStation(station);
+    setMobileView("station")
   }, []);
 
-  // called when user clicks a train card in the sidebar
   const handleTrainSelect = useCallback((train: Train) => {
     setSelectedTrain(train);
-  }, []);
+    setMobileView("train"); 
+}, []);
 
-  // called when user closes the train detail panel
   const handleCloseTrainPanel = useCallback(() => {
     setSelectedTrain(null);
-  }, []);
+    setMobileView("search");
+}, []);
 
   return (
     <Layout
@@ -59,6 +61,7 @@ function App() {
           onLocationSelect={handleLocationSelect}
           onTrainSelect={handleTrainSelect}
           externalStation={mapClickedStation}
+          mobileView={mobileView}
         />
       }
       mapContent=
@@ -70,8 +73,7 @@ function App() {
           onStationSelect={handleStationSelect}
         />
       }
-      panelContent=
-      {
+      panelContent={
         selectedTrain ? (
           <TrainDetailPanel
             train={selectedTrain}
