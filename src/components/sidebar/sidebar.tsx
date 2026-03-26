@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Box, VStack, Input, Text, Button, useToast, Card, CardBody, Badge, Flex, Spinner, HStack, Icon,
-  InputGroup, InputLeftElement
-} from '@chakra-ui/react';
-import { FaSearch, FaCircle, FaTimes, FaMapMarkerAlt } from 'react-icons/fa';
+import { Box, VStack, Text, Flex, Icon, HStack, useToast } from '@chakra-ui/react';
+import { FaMapMarkerAlt } from 'react-icons/fa';
 import { MdTrain } from 'react-icons/md';
 import { trainApi } from '../../api/api';
 import { ALL_TIPLOCS, HEADCODE_SEARCH_HUBS } from '../../data/tiplocData';
-import { getTrainStatus, formatTime } from '../../utils/trainUtils';
 import type { Train, TiplocData } from '../../types';
+import { DataSpinner } from '../spinners';
+import SearchBar from './searchBar';
+import TrainCard from './trainCard';
 
 const MAX_SUGGESTIONS = 8; // autocomplete suggestions limit
 const DEBOUNCE_MS = 250;   // debounce delay for autocomplete input
@@ -52,26 +51,21 @@ const fuzzySearchTiplocs = (query: string): TiplocData[] => {
   const q = query.toLowerCase().trim();
 
   const scored = ALL_TIPLOCS
-    .filter(t => t.Latitude && t.Longitude)               // only entries with valid coordinates
-    .filter(t => !t.Tiploc.startsWith('ELOC'))            // exclude engineering locations
-    .filter(isPassengerStation)                           // only real passenger stations
+    .filter(t => t.Latitude && t.Longitude)
+    .filter(t => !t.Tiploc.startsWith('ELOC'))
+    .filter(isPassengerStation)
     .map(t => {
       const name = t.Name.toLowerCase();
       const code = t.Tiploc.toLowerCase();
       const crs = (t.Details?.CRS || '').toLowerCase();
       let score = 0;
 
-      // exact match on either field gets highest score
       if (name === q || code === q || crs === q) score = 100;
-      // starts-with match is next best
       else if (name.startsWith(q)) score = 80;
       else if (code.startsWith(q)) score = 70;
-      // word boundary match (e.g. "pancras" matches "london st pancras")
       else if (name.split(/\s+/).some(word => word.startsWith(q))) score = 60;
-      // contains match
       else if (name.includes(q)) score = 40;
       else if (code.includes(q)) score = 30;
-      // no match
       else return null;
 
       return { tiploc: t, score };
@@ -88,11 +82,9 @@ const fuzzySearchTiplocs = (query: string): TiplocData[] => {
 // splits a large list into smaller arrays for batched API requests
 const chunkArray = <T,>(items: T[], size: number): T[][] => {
   const chunks: T[][] = [];
-
   for (let i = 0; i < items.length; i += size) {
     chunks.push(items.slice(i, i + size));
   }
-
   return chunks;
 };
 
@@ -101,21 +93,14 @@ const chunkArray = <T,>(items: T[], size: number): T[][] => {
 const sortHeadcodeResults = (a: Train, b: Train, headcode: string) => {
   const aExact = a.headCode?.toUpperCase() === headcode ? 1 : 0;
   const bExact = b.headCode?.toUpperCase() === headcode ? 1 : 0;
-
-  if (aExact !== bExact) {
-    return bExact - aExact;
-  }
-
+  if (aExact !== bExact) return bExact - aExact;
   return (a.scheduledDeparture || '').localeCompare(b.scheduledDeparture || '');
 };
 
 
 // gets a safe message from an unknown error object
 const getErrorMessage = (error: unknown, fallback: string): string => {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
+  if (error instanceof Error && error.message) return error.message;
   return fallback;
 };
 
@@ -138,16 +123,13 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
   const [searchedHeadcode, setSearchedHeadcode] = useState<string | null>(null);
 
   // refs
-  const suggestionsRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const searchGenRef = useRef(0); // tracks current search generation to cancel stale requests
-  const activeTiplocRef = useRef<string | null>(null); // tiploc code for auto-refresh polling
+  const searchGenRef = useRef(0);
+  const activeTiplocRef = useRef<string | null>(null);
 
   const toast = useToast();
 
 
   // auto-refresh: periodically re-fetch the station train list to keep statuses current
-  // the bulk station API returns stale lastReportedType values, so polling keeps them fresh
   useEffect(() => {
     const interval = setInterval(async () => {
       const tiploc = activeTiplocRef.current;
@@ -165,14 +147,11 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
   }, [onTrainsChange]);
 
 
-  /**
-   * Switches between station and train search modes.
-   * Clears all previous search results and input when switching.
-   */
+  // switches between station and train search modes
   const handleModeSwitch = (mode: SearchMode) => {
     if (mode === searchMode) return;
-    searchGenRef.current++; // cancel any in-flight search
-    activeTiplocRef.current = null; // stop auto-refresh
+    searchGenRef.current++;
+    activeTiplocRef.current = null;
     setSearchMode(mode);
     setSearchTerm('');
     onTrainsChange([]);
@@ -185,10 +164,7 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
   };
 
 
-  /**
-   * Debounced autocomplete: updates suggestion list as user types.
-   * Only active in station search mode.
-   */
+  // debounced autocomplete: updates suggestion list as user types
   useEffect(() => {
     if (searchMode !== 'station' || searchTerm.length < 2) {
       setSuggestions([]);
@@ -207,41 +183,26 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
   }, [searchTerm, searchMode]);
 
 
-  // close suggestions dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node) &&
-        inputRef.current && !inputRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-
   // handle search for station and its schedule
   const executeStationSearch = useCallback(async (tiplocCode: string, stationName?: string) => {
-    const gen = ++searchGenRef.current; // new generation — stale requests will bail out
+    const gen = ++searchGenRef.current;
 
-    setIsLoading(true);       // show loading spinner
-    onTrainsChange([]);       // clear previous search results
-    setSelectedTrainId(null); // clear selected train
+    setIsLoading(true);
+    onTrainsChange([]);
+    setSelectedTrainId(null);
     setShowSuggestions(false);
     setActiveStation(stationName || tiplocCode);
 
     try {
-      // get coordinates: try API first, fall back to local JSON data
       let lat: number | null = null;
       let lng: number | null = null;
 
-      try { // fetch location data for the searched tiploc
+      try {
         const location = await trainApi.getLocation(tiplocCode);
-        if (gen !== searchGenRef.current) return; // stale
+        if (gen !== searchGenRef.current) return;
         lat = location.latitude;
         lng = location.longitude;
       } catch {
-        // API failed — fall back to local JSON data for coordinates
         const localMatch = ALL_TIPLOCS.find(t => t.Tiploc === tiplocCode.toUpperCase());
         if (localMatch?.Latitude && localMatch?.Longitude) {
           lat = localMatch.Latitude;
@@ -249,21 +210,17 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
         }
       }
 
-      if (gen !== searchGenRef.current) return; // stale
-
+      if (gen !== searchGenRef.current) return;
       if (lat === null || lng === null) {
         throw new Error(`Could not find coordinates for: ${tiplocCode}`);
       }
 
       onLocationSelect(lat, lng, tiplocCode.toUpperCase());
-
-      // store the active tiploc for auto-refresh polling
       activeTiplocRef.current = tiplocCode.toUpperCase();
 
-      // fetch train schedule (may return empty on staging API)
       try {
         const schedule = await trainApi.getTrainsAtStation(tiplocCode);
-        if (gen !== searchGenRef.current) return; // stale
+        if (gen !== searchGenRef.current) return;
         onTrainsChange(schedule);
       } catch {
         if (gen !== searchGenRef.current) return;
@@ -272,7 +229,7 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
 
     } catch (error: unknown) {
       if (gen !== searchGenRef.current) return;
-      toast({ // custom error toast
+      toast({
         title: "Search failed",
         description: getErrorMessage(error, "Could not find station."),
         status: "error",
@@ -287,10 +244,7 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
   }, [onLocationSelect, onTrainsChange, toast]);
 
 
-  /**
-   * Handles selection of an autocomplete suggestion.
-   * Updates input field and triggers the station search.
-   */
+  // handles selection of an autocomplete suggestion
   const handleSuggestionSelect = (tiploc: TiplocData) => {
     setSearchTerm(tiploc.Name);
     setShowSuggestions(false);
@@ -298,14 +252,10 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
   };
 
 
-  /**
-   * Executes nationwide headcode search by scanning major UK rail hubs.
-   * Uses a curated hub list instead of all stations — keeps URLs short and avoids CORS failures.
-   * Results are deduplicated by train id and sorted with exact matches first.
-   */
+  // executes nationwide headcode search by scanning major UK rail hubs
   const executeTrainSearch = useCallback(async (headcode: string) => {
-    const gen = ++searchGenRef.current; // new generation
-    activeTiplocRef.current = null; // stop station auto-refresh
+    const gen = ++searchGenRef.current;
+    activeTiplocRef.current = null;
     setIsLoading(true);
     onTrainsChange([]);
     setSelectedTrainId(null);
@@ -317,7 +267,7 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
       const matchesById = new Map<string, Train>();
 
       for (let i = 0; i < hubChunks.length; i += HEADCODE_BATCH_SIZE) {
-        if (gen !== searchGenRef.current) return; // search was superseded
+        if (gen !== searchGenRef.current) return;
 
         const batch = hubChunks.slice(i, i + HEADCODE_BATCH_SIZE);
         const results = await Promise.allSettled(
@@ -326,7 +276,6 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
 
         results.forEach((result) => {
           if (result.status !== 'fulfilled') return;
-
           result.value.forEach((train) => {
             if (!train.headCode?.toUpperCase().includes(hc)) return;
             if (!matchesById.has(train.trainId)) {
@@ -336,7 +285,7 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
         });
       }
 
-      if (gen !== searchGenRef.current) return; // stale
+      if (gen !== searchGenRef.current) return;
 
       const matches = Array.from(matchesById.values()).sort((a, b) => sortHeadcodeResults(a, b, hc));
 
@@ -352,7 +301,6 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
 
       onTrainsChange(matches);
 
-      // auto-select if exactly one result
       if (matches.length === 1) {
         const train = matches[0];
         setSelectedTrainId(train.trainId);
@@ -376,20 +324,15 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
   }, [onTrainSelect, onTrainsChange, toast]);
 
 
-  /**
-   * Reacts to station clicks on the map.
-   * Switches to station mode and runs the search as if the user typed it.
-   */
+  // reacts to station clicks on the map
   const lastExternalTiplocRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!externalStation) return;
-    // avoid re-searching the same station if it's already displayed
     if (externalStation.Tiploc === lastExternalTiplocRef.current) return;
 
     lastExternalTiplocRef.current = externalStation.Tiploc;
 
-    // switch to station mode and populate input
     setSearchMode('station');
     setSearchTerm(externalStation.Name);
     setSearchedHeadcode(null);
@@ -410,8 +353,6 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
       return;
     }
 
-    // station mode: try to resolve the input to a TIPLOC
-    // prefer passenger stations since those actually return train data
     const term = searchTerm.trim().toLowerCase();
 
     const directMatch = ALL_TIPLOCS.find(
@@ -434,21 +375,17 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
       return;
     }
 
-    // use first autocomplete suggestion if available
     if (suggestions.length > 0) {
       handleSuggestionSelect(suggestions[0]);
       return;
     }
 
-    // fallback: try direct API lookup with raw input
     executeStationSearch(searchTerm.trim().toUpperCase());
   };
 
 
-  // quality of life feature - allow pressing Enter to trigger search
-  // also handles keyboard navigation for autocomplete dropdown
+  // keyboard navigation for autocomplete and enter-to-search
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // station mode with suggestions open: arrow key navigation
     if (searchMode === 'station' && showSuggestions) {
       switch (e.key) {
         case 'ArrowDown':
@@ -479,8 +416,8 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
 
   // clear search and reset all state
   const handleClear = () => {
-    searchGenRef.current++; // cancel any in-flight search
-    activeTiplocRef.current = null; // stop auto-refresh
+    searchGenRef.current++;
+    activeTiplocRef.current = null;
     setSearchTerm('');
     setSuggestions([]);
     setShowSuggestions(false);
@@ -501,74 +438,21 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
         <SearchTab label="Train" icon={MdTrain} isActive={searchMode === 'train'} onClick={() => handleModeSwitch('train')} />
       </Flex>
 
-      {/* search area */}
-      <Box p="4" borderBottomWidth="1px" borderColor="gray.200" bg="white" shadow="sm" zIndex={20} position="relative">
-        <Flex gap={2}>
-          <Box flex={1} position="relative">
-            <InputGroup size="sm">
-              <InputLeftElement pointerEvents="none">
-                <FaSearch color="gray" fontSize="12px" />
-              </InputLeftElement>
-              <Input
-                ref={inputRef}
-                placeholder={searchMode === 'station' ? 'Search station (e.g. "Sheffield")' : 'Search by headcode (e.g. "1F45")'}
-                size="sm"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onFocus={() => { if (searchMode === 'station' && suggestions.length > 0) setShowSuggestions(true); }}
-                focusBorderColor="blue.500"
-                bg="gray.50"
-                pl="8"
-                pr={searchTerm ? "8" : "3"}
-                fontFamily={searchMode === 'train' ? "mono" : "inherit"}
-                textTransform={searchMode === 'train' ? "uppercase" : "none"}
-              />
-              {/* clear button inside input */}
-              {searchTerm && (
-                <Box position="absolute" right="8px" top="50%" transform="translateY(-50%)"
-                  cursor="pointer" zIndex={2} onClick={handleClear} color="gray.400"
-                  _hover={{ color: "gray.600" }} transition="color 0.15s"
-                >
-                  <FaTimes fontSize="10px" />
-                </Box>
-              )}
-            </InputGroup>
-
-            {/* auto complete dropdown */}
-            {searchMode === 'station' && showSuggestions && (
-              <Box ref={suggestionsRef} position="absolute" top="100%" left={0} right={0} mt={1}
-                bg="white" border="1px solid" borderColor="gray.200" borderRadius="md"
-                shadow="xl" zIndex={100} maxH="320px" overflowY="auto"
-              >
-                <Text fontSize="2xs" fontWeight="bold" color="gray.400" px={3} pt={2} pb={1}
-                  letterSpacing="wider" textTransform="uppercase">
-                  Matching Stations
-                </Text>
-                {suggestions.map((tiploc, index) => (
-                  <Flex key={tiploc.Tiploc} px={3} py={2} cursor="pointer" alignItems="center" gap={3}
-                    bg={index === highlightedIndex ? "blue.50" : "transparent"}
-                    _hover={{ bg: "blue.50" }} transition="background 0.1s"
-                    onClick={() => handleSuggestionSelect(tiploc)}
-                  >
-                    <Box w="6px" h="6px" borderRadius="full" bg="blue.400" flexShrink={0} />
-                    <Box flex={1} minW={0}>
-                      <Text fontSize="sm" fontWeight="500" color="gray.700" isTruncated>{tiploc.Name}</Text>
-                    </Box>
-                    <Badge fontSize="0.6em" colorScheme="gray" variant="subtle" fontFamily="mono" px={1.5} borderRadius="sm" flexShrink={0}>
-                      {tiploc.Tiploc}
-                    </Badge>
-                  </Flex>
-                ))}
-              </Box>
-            )}
-          </Box>
-
-          <Button size="sm" aria-label="Search for station or train" colorScheme="blue" onClick={handleSearch} isLoading={isLoading} disabled={!searchTerm}>
-            <FaSearch />
-          </Button>
-        </Flex>
-      </Box>
+      {/* search bar */}
+      <SearchBar
+        searchMode={searchMode}
+        searchTerm={searchTerm}
+        onSearchTermChange={setSearchTerm}
+        onSearch={handleSearch}
+        onClear={handleClear}
+        onKeyDown={handleKeyDown}
+        isLoading={isLoading}
+        suggestions={suggestions}
+        showSuggestions={showSuggestions}
+        onShowSuggestionsChange={setShowSuggestions}
+        highlightedIndex={highlightedIndex}
+        onSuggestionSelect={handleSuggestionSelect}
+      />
 
       {/* results context */}
       {!isLoading && trains.length > 0 && (
@@ -583,86 +467,23 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
         </Box>
       )}
 
+      {/* train list */}
       <VStack flex="1" overflowY="auto" p="3" spacing="3" align="stretch" bg="gray.50">
         {isLoading && (
-          <Flex justify="center" py={8}>
-            <Spinner color="blue.500" size="xl" thickness="3px" />
-          </Flex>
+          <DataSpinner />
         )}
 
-        {!isLoading && trains.map((train) => {
-          const status = getTrainStatus(train);
-          const isSelected = selectedTrainId === train.trainId;
-          const isLate = train.lastReportedDelay > 4 && !train.cancelled;
-
-          return (
-            <Card
-              key={train.trainId}
-              h="auto"
-              minH="fit-content"
-              cursor="pointer"
-              onClick={() => {
-                setSelectedTrainId(train.trainId);
-                onTrainSelect(train);
-              }}
-              bg={isSelected ? "blue.50" : "white"}
-              borderColor={isSelected ? "blue.400" : "gray.200"}
-              borderWidth="1px"
-              _hover={{ shadow: "md", borderColor: isSelected ? "blue.400" : "blue.200" }}
-              transition="all 0.2s"
-              overflow="hidden"
-            >
-              <Box h="3px" w="full" bg={status.color} />
-
-              <CardBody py={3} px={3}>
-                <Flex justify="space-between" align="center" mb={3}>
-                  <HStack spacing={2}>
-                    <Icon as={MdTrain} color="gray.600" />
-                    <Text fontWeight="bold" fontSize="sm" color="gray.700">
-                      {train.headCode}
-                    </Text>
-                  </HStack>
-                  <Badge colorScheme={status.badgeScheme} variant="subtle" fontSize="0.65em" px={2} py={0.5} borderRadius="sm">
-                    {status.label}
-                  </Badge>
-                </Flex>
-
-                <Box position="relative" pl={2} mb={3}>
-                  <Box position="absolute" left="11px" top="10px" bottom="10px" w="2px" bg="gray.200" />
-
-                  <VStack align="stretch" spacing={3}>
-                    <Flex align="center" gap={3}>
-                      <Icon as={FaCircle} color="gray.400" boxSize={2} zIndex={1} />
-                      <Text fontSize="sm" fontWeight="semibold" w="45px" color={isLate ? "red.500" : "gray.700"}>
-                        {formatTime(train.scheduledDeparture)}
-                      </Text>
-                      <Text fontSize="xs" fontWeight="medium" color="gray.600" isTruncated>
-                        {train.originLocation || train.originTiploc}
-                      </Text>
-                    </Flex>
-
-                    <Flex align="center" gap={3}>
-                      <Icon as={FaCircle} color={status.color} boxSize={2} zIndex={1} />
-                      <Text fontSize="sm" fontWeight="semibold" w="45px" color={isLate ? "red.500" : "gray.700"}>
-                        {formatTime(train.scheduledArrival)}
-                      </Text>
-                      <Text fontSize="sm" fontWeight="bold" color="gray.800" isTruncated>
-                        {train.destinationLocation || train.destinationTiploc}
-                      </Text>
-                    </Flex>
-                  </VStack>
-                </Box>
-
-                <Flex justify="space-between" align="center" borderTopWidth="1px" borderColor="gray.100" pt={2}>
-                  <Text fontSize="2xs" color="gray.500" fontWeight="medium" textTransform="uppercase" letterSpacing="wide">
-                    {train.toc_Name || "Operator Unknown"}
-                  </Text>
-                </Flex>
-
-              </CardBody>
-            </Card>
-          );
-        })}
+        {!isLoading && trains.map((train) => (
+          <TrainCard
+            key={train.trainId}
+            train={train}
+            isSelected={selectedTrainId === train.trainId}
+            onSelect={() => {
+              setSelectedTrainId(train.trainId);
+              onTrainSelect(train);
+            }}
+          />
+        ))}
 
         {!isLoading && trains.length === 0 && (
           <Flex direction="column" align="center" justify="center" py={12} color="gray.600" mt={10}>
@@ -683,7 +504,6 @@ const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, exte
             </Text>
           </Flex>
         )}
-
       </VStack>
     </Box>
   );

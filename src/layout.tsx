@@ -1,5 +1,5 @@
 import { Flex, Box } from '@chakra-ui/react';
-import Header from './components/layout/header';
+import Header from './components/header';
 
 interface LayoutProps {
     sideContent: React.ReactNode;

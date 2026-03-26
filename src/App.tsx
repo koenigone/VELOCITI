@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 import Layout from './layout';
-import Sidebar from './components/layout/sidebar';
+import Sidebar from './components/sidebar/sidebar';
 import MapArea from './components/map/mapArea';
-import TrainDetailPanel from './components/layout/trainDetailPanel';
+import TrainDetailPanel from './components/panel/trainDetailPanel';
 import useLiveSelectedTrain from './hooks/useLiveSelectedTrain';
 import type { MapTarget } from './components/map/mapArea';
 import type { Train, TiplocData } from './types';
