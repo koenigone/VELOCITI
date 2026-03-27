@@ -24,6 +24,7 @@ interface SidebarProps {
   onLocationSelect: (lat: number, lng: number, stationCode: string) => void;
   onTrainSelect: (train: Train) => void;
   externalStation?: TiplocData | null; // set when user clicks a station on the map
+  mobileView?: "search" | "station" | "train"; // controls visibility on mobile
 }
 
 
@@ -106,7 +107,10 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 
 
 // main sidebar component
-const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, externalStation }: SidebarProps) => {
+const Sidebar = ({ trains, onTrainsChange, onLocationSelect, onTrainSelect, externalStation, mobileView }: SidebarProps) => {
+
+  // on mobile, hide the sidebar when the train detail panel is showing
+  if (mobileView === "train") return null;
 
   // shared state
   const [searchMode, setSearchMode] = useState<SearchMode>('station');

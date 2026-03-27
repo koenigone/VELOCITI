@@ -14,6 +14,9 @@ function App() {
   const [trains, setTrains] = useState<Train[]>([]); // train list source, shared between sidebar and details panel
   const [mapClickedStation, setMapClickedStation] = useState<TiplocData | null>(null); // station clicked on the map -> trigger search
 
+  // mobile view state: controls which panel is visible on small screens
+  const [mobileView, setMobileView] = useState<"search" | "station" | "train">("search");
+
   // live socket update
   const handleLiveTrainUpdate = useCallback((updatedTrain: Train) => {
     setSelectedTrain(current => {
@@ -36,22 +39,26 @@ function App() {
     setMapTarget({ lat, lng, zoom: 14 });
     setSelectedTrain(null);
     setSearchedStation(stationCode);
+    setMobileView("station");
   }, []);
 
   // called when user clicks a station marker on the map
   const handleStationSelect = useCallback((station: TiplocData) => {
     setSelectedTrain(null);
     setMapClickedStation(station);
+    setMobileView("station");
   }, []);
 
   // called when user clicks a train card in the sidebar
   const handleTrainSelect = useCallback((train: Train) => {
     setSelectedTrain(train);
+    setMobileView("train");
   }, []);
 
   // called when user closes the train detail panel
   const handleCloseTrainPanel = useCallback(() => {
     setSelectedTrain(null);
+    setMobileView("search");
   }, []);
 
   return (
@@ -64,6 +71,7 @@ function App() {
           onLocationSelect={handleLocationSelect}
           onTrainSelect={handleTrainSelect}
           externalStation={mapClickedStation}
+          mobileView={mobileView}
         />
       }
       mapContent=
