@@ -1,5 +1,6 @@
 import L from 'leaflet';
 import { MARKER_COLORS } from '../../theme';
+import trainMarker from '../../assets/trainMarker.png'
 
 // numbered station pin icon on the train route
 const pinIconCache = new Map<string, L.DivIcon>();
@@ -80,10 +81,10 @@ export const DEFAULT_STATION_STYLE: L.CircleMarkerOptions = {
   weight: 1,
 };
 
-export const SEARCHED_STATION_STYLE: L.CircleMarkerOptions = {
-  radius: 6,
-  color: '#e53e3e',
-  fillColor: '#fc8181',
-  fillOpacity: 0.8,
-  weight: 2,
-};
+export const SEARCHED_STATION_ICON = L.icon({
+  iconUrl: trainMarker, // This uses the imported PNG path
+  iconSize: [32, 32],   // Adjust size to your preference
+  iconAnchor: [16, 16], // Point of the icon which will correspond to marker's location (center)
+  popupAnchor: [0, -16],
+  className: 'searched-train-marker'
+});

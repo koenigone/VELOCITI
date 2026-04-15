@@ -5,19 +5,18 @@ const Header = () => {
         <Flex
             as="header"
             w="full"
-            h={{ base: "44px", md: "64px" }}
+            h="64px"
             align="center"
-            px={{ base: "4", md: "6" }}
+            px="6"
             bg="blue.900"
             color="white"
             shadow="md"
             zIndex="sticky"
-            flexShrink={0}
         >
-            <Heading size={{ base: "sm", md: "md" }} letterSpacing="wide">
+            <Heading size="md" letterSpacing="wide">
                 VELOCITI
             </Heading>
-            <Text ml={2} opacity={0.8} fontWeight="light" fontSize={{ base: "xs", md: "md" }}>
+            <Text ml={2} opacity={0.8} fontWeight="light">
                 | National Map
             </Text>
         </Flex>

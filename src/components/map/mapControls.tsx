@@ -17,16 +17,26 @@ interface MapControlsProps {
 // main component
 const MapControls = ({ currentLayer, onLayerChange, onReset, showTiplocs, onToggleTiplocs }: MapControlsProps) => {
 
-  const glassStyle = { // custom controls styling
-    bg: "whiteAlpha.900",
-    backdropFilter: "blur(4px)",
-    shadow: "lg",
+  const glassStyle = {
+    bg: "rgba(255, 255, 255, 0.37)",
+    backdropFilter: "blur(12px) saturate(180%)",
+    WebkitBackdropFilter: "blur(12px) saturate(180%)", // Safari support
     border: "1px solid",
-    borderColor: "gray.200",
-    _hover: { bg: "white" },
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
+    color: "#1a365d",
+    _hover: {
+      bg: "rgba(255, 255, 255, 0.28)",
+      borderColor: "rgba(255, 255, 255, 0.5)",
+      boxShadow: "0 6px 28px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.7)",
+    },
+    _active: {
+      bg: "rgba(255, 255, 255, 0.75)",
+    },
     size: "sm",
     width: "160px",
-    justifyContent: "flex-start"
+    justifyContent: "flex-start",
+    transition: "all 0.2s ease",
   };
 
   return (

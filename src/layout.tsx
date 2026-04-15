@@ -1,6 +1,6 @@
 import { Flex, Box, useBreakpointValue } from '@chakra-ui/react';
 import Header from './components/header';
-import BottomPanel from './components/mobile/BottomPanel';
+import BottomSheet from './components/mobile/bottomSheet';
 
 interface LayoutProps {
     sideContent: React.ReactNode;
@@ -18,28 +18,19 @@ const Layout = ({ sideContent, mapContent, panelContent }: LayoutProps) => {
             {/* header */}
             <Header />
 
-            {/* mobile layout: full-screen map with bottom panel overlay */}
+            {/* mobile layout: full-screen map with draggable bottom sheet */}
             {isMobile ? (
-                <Box flex="1" position="relative">
+                <Box flex="1" position="relative" overflow="hidden">
 
                     {/* map fills the entire background */}
-                    <Box h="100%" w="100%">
+                    <Box position="absolute" inset="0">
                         {mapContent}
                     </Box>
 
-                    {/* bottom panel overlay — shows train detail if selected, otherwise sidebar */}
-                    <Box
-                        position="absolute"
-                        bottom="0"
-                        left="0"
-                        right="0"
-                        h="60%"
-                        zIndex="1000"
-                    >
-                        <BottomPanel>
-                            {panelContent ? panelContent : sideContent}
-                        </BottomPanel>
-                    </Box>
+                    {/* draggable bottom sheet — swaps content based on whether a train is selected */}
+                    <BottomSheet forceExpand={!!panelContent}>
+                        {panelContent ? panelContent : sideContent}
+                    </BottomSheet>
 
                 </Box>
             ) : (

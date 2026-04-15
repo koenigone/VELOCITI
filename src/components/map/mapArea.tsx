@@ -8,7 +8,7 @@ import type { TiplocData, Train } from '../../types';
 import MapControls from './mapControls';
 import { MAP_LAYERS } from './mapLayers';
 import RouteRenderer from './routeRenderer'
-import { DEFAULT_STATION_STYLE, SEARCHED_STATION_STYLE } from './markers';
+import { DEFAULT_STATION_STYLE, SEARCHED_STATION_ICON } from './markers';
 import { MapSpinner } from '../spinners';
 
 // configs
@@ -42,7 +42,7 @@ const MapController = ({ targetView, resetTrigger }: MapControllerProps) => {
   // when targetView changes, fly to new location with animation
   useEffect(() => {
     if (targetView) {
-      map.flyTo([targetView.lat, targetView.lng], targetView.zoom || 14);
+      map.setView([targetView.lat, targetView.lng], targetView.zoom || 14);
     }
   }, [targetView, map]);
 
@@ -107,20 +107,22 @@ const TiplocLayer = ({
       if (!t.Latitude || !t.Longitude) return null;
 
       const isSearchedTarget = !visible && searchedStation === t.Tiploc;
-      const baseStyle = isSearchedTarget ? SEARCHED_STATION_STYLE : DEFAULT_STATION_STYLE;
+      const latlng: L.LatLngExpression = [t.Latitude, t.Longitude];
 
-      return L.circleMarker([t.Latitude, t.Longitude], { ...baseStyle, renderer: canvasRenderer })
-        .bindTooltip(`
+      // 1. Create the specific marker type based on whether it's the searched icon or a dot
+      const marker = isSearchedTarget
+        ? L.marker(latlng, { icon: SEARCHED_STATION_ICON })
+        : L.circleMarker(latlng, { ...DEFAULT_STATION_STYLE, renderer: canvasRenderer });
+
+      return marker.bindTooltip(`
         <div style="font-family: system-ui;">
           <strong>${t.Name}</strong><br/>
           <small>TIPLOC: ${t.Tiploc}</small>
         </div>
-      `)
-        .on('click', () => {
-          onStationSelectRef.current?.(t);
-        });
-    }).filter((m): m is L.CircleMarker => m !== null);
-
+        `).on('click', () => {
+        onStationSelectRef.current?.(t);
+      });
+    }).filter((m): m is L.Marker | L.CircleMarker => m !== null); // Update type filter
     // create a layer group for the markers and add to map
     layerRef.current = L.featureGroup(markers);
     map.addLayer(layerRef.current);
