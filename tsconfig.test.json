@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "types": ["vite/client", "jest", "node", "@testing-library/jest-dom"],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+  },
+  "include": ["src", "jest.config.cjs"]
+}

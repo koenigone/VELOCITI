@@ -27,7 +27,7 @@ interface TrainDetailPanelProps {
    schedule gives us: ordered route, tiplocs, lat/lng, planned times
    movement gives us: actual times and variation (delay) at each location
 */
-const buildTimeline = (
+export const buildTimeline = (
   schedule: ScheduleStop[],
   movements: MovementEvent[],
   train: Train

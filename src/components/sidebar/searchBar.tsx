@@ -85,6 +85,7 @@ const SearchBar = ({
               <Box position="absolute" right="8px" top="50%" transform="translateY(-50%)"
                 cursor="pointer" zIndex={2} onClick={onClear} color="gray.400"
                 _hover={{ color: "gray.600" }} transition="color 0.15s"
+                role="button" aria-label="Clear search" tabIndex={0}
               >
                 <FaTimes fontSize="10px" />
               </Box>
@@ -120,7 +121,7 @@ const SearchBar = ({
           )}
         </Box>
 
-        <Button size="sm" aria-label="Search for station or train" colorScheme="blue" onClick={onSearch} isLoading={isLoading} disabled={!searchTerm}>
+        <Button size="sm" aria-label="Search for station or train" colorScheme="blue" onClick={onSearch} isLoading={isLoading} isDisabled={!searchTerm}>
           <FaSearch />
         </Button>
       </Flex>

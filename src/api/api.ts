@@ -2,7 +2,7 @@ import type { Train, TiplocLocation, ScheduleStop, MovementEvent } from '../type
 
 // api config
 const API_BASE = "https://traindata-stag-api.railsmart.io/api";
-const API_KEY = import.meta.env.VITE_VELOCITI_API_KEY;
+const API_KEY = import.meta.env?.VITE_VELOCITI_API_KEY;
 
 
 // shared headers for all API requests

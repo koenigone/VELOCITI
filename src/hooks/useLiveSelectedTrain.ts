@@ -19,11 +19,11 @@ interface LiveTrainUpdate {
   lastReportedLongitude?: number;
 }
 
-const SOCKET_URL = import.meta.env.VITE_VELOCITI_SOCKET_URL;
+const SOCKET_URL = import.meta.env?.VITE_VELOCITI_SOCKET_URL;
 
 
 // merges live socket updates into the existing selected train object
-const mergeLiveTrain = (train: Train, update: LiveTrainUpdate): Train => {
+export const mergeLiveTrain = (train: Train, update: LiveTrainUpdate): Train => {
   return {
     ...train,
     headCode: update.headCode ?? train.headCode,
