@@ -20,7 +20,9 @@ const MapControls = ({ currentLayer, onLayerChange, onReset, showTiplocs, onTogg
   const glassStyle = {
     bg: "rgba(255, 255, 255, 0.37)",
     backdropFilter: "blur(12px) saturate(180%)",
-    WebkitBackdropFilter: "blur(12px) saturate(180%)", // Safari support
+    sx: {
+      WebkitBackdropFilter: "blur(12px) saturate(180%)",
+    },
     border: "1px solid",
     borderColor: "rgba(255, 255, 255, 0.3)",
     boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
