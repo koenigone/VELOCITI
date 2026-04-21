@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom';
 import { jest } from '@jest/globals';
 
+// mocking window.matchMedia for tests that involve responsive behavior
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: jest.fn((query: string) => ({

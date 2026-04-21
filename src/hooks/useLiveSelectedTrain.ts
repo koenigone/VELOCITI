@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import type { Train } from '../types';
 
+// live tracking status states
 export type LiveTrackingStatus = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'disconnected' | 'unavailable' | 'error';
 
 interface LiveTrainUpdate {

@@ -175,7 +175,7 @@ const TrainDetailPanel = ({ train, liveStatus, lastUpdated, onLastUpdatedChange,
   }, [train.activationId, train.scheduleId, onLastUpdatedChange]);
 
 
-  // fetches only movement data and merges with cached schedule — used for live updates
+  // fetches only movement data and merges with cached schedule, used for live updates
   const refreshMovements = useCallback(async () => {
     // skip if we don't have a cached schedule yet
     if (scheduleRef.current.length === 0) return;

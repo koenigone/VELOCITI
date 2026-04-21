@@ -1,5 +1,6 @@
 import type { Train } from '../types';
 
+// dummy train factory for test data generation
 export const createTrain = (overrides: Partial<Train> = {}): Train => ({
   trainId: 'train-1',
   headCode: '1A23',

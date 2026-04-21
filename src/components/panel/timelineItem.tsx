@@ -11,7 +11,7 @@ interface TimelineItemProps {
 
 const TimelineItem = ({ stop, isFirst, isLast, isLiveEvent }: TimelineItemProps) => {
 
-  // dot colour based on position in the timeline — live event takes priority
+  // dot colour based on position in the timeline, live event takes priority
   const dotColor = isLiveEvent ? "orange.400" : isFirst ? "green.400" : isLast ? "red.400" : stop.isPass ? "blue.300" : "blue.500";
   const dotSize = isLiveEvent ? "12px" : (isFirst || isLast) ? "10px" : stop.isPass ? "7px" : "9px";
 

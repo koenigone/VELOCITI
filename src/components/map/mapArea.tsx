@@ -56,9 +56,10 @@ const MapController = ({ targetView, resetTrigger }: MapControllerProps) => {
   return null;
 };
 
-// layer to show tiploc stations, either all or just the searched station
-// uses a ref for onStationSelect to prevent the entire layer being torn down
-// and rebuilt on every parent re-render (which was causing the memory leak / grey screen)
+/* layer to show tiploc stations, either all or just the searched station
+* uses a ref for onStationSelect to prevent the entire layer being torn down
+* and rebuilt on every parent re-render (which was causing the memory leak / grey screen)
+*/
 const TiplocLayer = ({
   visible,
   searchedStation,
@@ -109,7 +110,7 @@ const TiplocLayer = ({
       const isSearchedTarget = !visible && searchedStation === t.Tiploc;
       const latlng: L.LatLngExpression = [t.Latitude, t.Longitude];
 
-      // 1. Create the specific marker type based on whether it's the searched icon or a dot
+      // create the specific marker type based on whether it's the searched icon or a dot
       const marker = isSearchedTarget
         ? L.marker(latlng, { icon: SEARCHED_STATION_ICON })
         : L.circleMarker(latlng, { ...DEFAULT_STATION_STYLE, renderer: canvasRenderer });
@@ -122,7 +123,7 @@ const TiplocLayer = ({
         `).on('click', () => {
         onStationSelectRef.current?.(t);
       });
-    }).filter((m): m is L.Marker | L.CircleMarker => m !== null); // Update type filter
+    }).filter((m): m is L.Marker | L.CircleMarker => m !== null); // update type filter
     // create a layer group for the markers and add to map
     layerRef.current = L.featureGroup(markers);
     map.addLayer(layerRef.current);
@@ -133,7 +134,7 @@ const TiplocLayer = ({
         layerRef.current = null;
       }
     };
-  }, [map, visible, searchedStation]); // onStationSelect deliberately excluded — accessed via ref
+  }, [map, visible, searchedStation]); // onStationSelect deliberately excluded, accessed via ref
 
   return null;
 };

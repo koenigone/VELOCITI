@@ -11,7 +11,7 @@ import TrainCard from './trainCard';
 
 const MAX_SUGGESTIONS = 8; // autocomplete suggestions limit
 const DEBOUNCE_MS = 250;   // debounce delay for autocomplete input
-const HEADCODE_CHUNK_SIZE = 20;  // tiplocs per request — keeps URLs short
+const HEADCODE_CHUNK_SIZE = 20;  // tiplocs per request, keeps URLs short
 const HEADCODE_BATCH_SIZE = 2;   // concurrent chunk requests
 const REFRESH_INTERVAL_MS = 30000; // auto-refresh station train list every 30s
 

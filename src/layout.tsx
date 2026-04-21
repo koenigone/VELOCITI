@@ -27,7 +27,7 @@ const Layout = ({ sideContent, mapContent, panelContent }: LayoutProps) => {
                         {mapContent}
                     </Box>
 
-                    {/* draggable bottom sheet — swaps content based on whether a train is selected */}
+                    {/* draggable bottom sheet, swaps content based on whether a train is selected */}
                     <BottomSheet forceExpand={!!panelContent}>
                         {panelContent ? panelContent : sideContent}
                     </BottomSheet>

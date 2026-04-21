@@ -8,8 +8,8 @@ const SNAP_POINTS = {
   full: 0.88,   // nearly full screen
 };
 
-const DRAG_THRESHOLD = 30; // minimum px drag before we consider it a gesture
-const VELOCITY_THRESHOLD = 0.4; // px/ms — fast flick snaps to next position
+const DRAG_THRESHOLD = 30;      // minimum px drag before we consider it a gesture
+const VELOCITY_THRESHOLD = 0.4; // px/ms, fast flick snaps to next position
 
 interface BottomSheetProps {
   children: React.ReactNode;
@@ -35,20 +35,20 @@ const BottomSheet = ({ children, forceExpand }: BottomSheetProps) => {
   const snapTo = useCallback((rawHeight: number, velocity: number) => {
     const points = [SNAP_POINTS.peek, SNAP_POINTS.half, SNAP_POINTS.full];
 
-    // fast flick — snap in the direction of the flick
+    // fast flick, snap in the direction of the flick
     if (Math.abs(velocity) > VELOCITY_THRESHOLD) {
       const currentIdx = points.findIndex(p => Math.abs(p - dragStartHeight.current) < 0.05);
       if (velocity < 0 && currentIdx < points.length - 1) {
-        // flicked up — go to next higher snap
+        // flicked up, go to next higher snap
         return points[Math.min(currentIdx + 1, points.length - 1)];
       }
       if (velocity > 0 && currentIdx > 0) {
-        // flicked down — go to next lower snap
+        // flicked down, go to next lower snap
         return points[Math.max(currentIdx - 1, 0)];
       }
     }
 
-    // slow drag — snap to nearest point
+    // slow drag, snap to nearest point
     let closest = points[0];
     let minDist = Math.abs(rawHeight - points[0]);
     for (let i = 1; i < points.length; i++) {

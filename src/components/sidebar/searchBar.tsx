@@ -6,7 +6,7 @@ import {
 import { FaSearch, FaTimes } from 'react-icons/fa';
 import type { TiplocData } from '../../types';
 
-
+// different search modes
 type SearchMode = 'station' | 'train';
 
 interface SearchBarProps {
@@ -17,7 +17,6 @@ interface SearchBarProps {
   onClear: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   isLoading: boolean;
-  // autocomplete
   suggestions: TiplocData[];
   showSuggestions: boolean;
   onShowSuggestionsChange: (show: boolean) => void;

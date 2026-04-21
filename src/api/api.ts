@@ -12,7 +12,7 @@ const getHeaders = () => ({
 });
 
 
-// shared response handler — throws on HTTP errors, returns parsed JSON
+// shared response handler, throws on HTTP errors, returns parsed JSON
 const handleResponse = async (response: Response, context: string) => {
   if (!response.ok) {
     throw new Error(`${context} (Status: ${response.status})`);
@@ -36,7 +36,6 @@ const getTodayRange = () => {
 // main API object with methods for all endpoints
 export const trainApi = {
 
-  // ---- POST /api/Tiploc/TiplocLocations ----
   // fetches lat/lng coordinates for an array of TIPLOC codes
   getTiplocLocations: async (tiplocs: string[]): Promise<TiplocLocation[]> => {
     if (!tiplocs.length) return [];
@@ -64,7 +63,6 @@ export const trainApi = {
   },
 
 
-  // ---- GET /api/trains/tiploc/{tiplocs}/{startDateTime}/{endDateTime} ----
   // fetches train data for one or more TIPLOCs within today's date range
   getTrainsAtTiplocs: async (tiplocs: string[]): Promise<Train[]> => {
     const uniqueTiplocs = [...new Set(tiplocs.map(t => t.toUpperCase().trim()).filter(Boolean))];
@@ -83,14 +81,12 @@ export const trainApi = {
   },
 
 
-  // ---- GET /api/trains/tiploc/{tiplocs}/{startDateTime}/{endDateTime} ----
   // fetches train data for a single TIPLOC within today's date range
   getTrainsAtStation: async (tiploc: string): Promise<Train[]> => {
     return trainApi.getTrainsAtTiplocs([tiploc]);
   },
 
 
-  // ---- GET /api/ifmtrains/schedule/{activationId}/{scheduleId} ----
   // fetches the full scheduled route for a specific train
   // returns ordered list of stops/passes with TIPLOCs, location names, lat/lng, and planned times
   getTrainSchedule: async (activationId: number, scheduleId: number): Promise<ScheduleStop[]> => {
@@ -106,7 +102,6 @@ export const trainApi = {
   },
 
 
-  // ---- GET /api/ifmtrains/movement/{activationId}/{scheduleId} ----
   // fetches actual movement data for a train (arrival/departure times at each location)
   // used alongside schedule data to compare planned vs actual times
   getTrainMovement: async (activationId: number, scheduleId: number): Promise<MovementEvent[]> => {

@@ -82,7 +82,7 @@ const findSplitIndex = (
         }
     }
 
-    // no movement data at all — return -1 (nothing completed)
+    // no movement data at all, return -1 (nothing completed)
     return -1;
 };
 
