@@ -377,8 +377,6 @@ This can be a valid state. Some TIPLOCs may not have active passenger services i
 Try a major station such as:
 
 - London Euston
-- Doncaster
-- Sheffield
 - Manchester Piccadilly
 - Leeds
 
