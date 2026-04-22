@@ -284,7 +284,7 @@ The project includes unit tests for:
 - Search bar interactions
 - Live selected train update merging
 
-See `TESTING_NOTES.md` for the full testing plan, scope, quality gate, and future testing recommendations.
+See `TESTING_PLAN.md` for the full testing plan, scope, quality gate, and future testing recommendations.
 
 ## Troubleshooting
 
