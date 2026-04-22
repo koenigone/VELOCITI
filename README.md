@@ -344,7 +344,7 @@ Then restart the Vite dev server. Vite only reads environment variables when the
 
 Check that:
 
-- `npm run dev:server` is running.
+- `node --env-file=.env server.js` is running.
 - `VELOCITI_API_KEY` or `VITE_VELOCITI_API_KEY` is available to the server.
 - The selected train has valid `activationId` and `scheduleId`.
 - The train schedule and movement endpoints are returning data.
