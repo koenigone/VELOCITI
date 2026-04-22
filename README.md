@@ -162,7 +162,7 @@ VELOCITI/
 `-- vite.config.ts                # Vite configuration
 ```
 
-## Prerequisites
+## How to Run the Project
 
 Install the following before running the project:
 
