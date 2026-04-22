@@ -7,6 +7,7 @@ const AllProviders = ({ children }: { children: React.ReactNode }) => {
   return <ChakraProvider>{children}</ChakraProvider>;
 };
 
+// render function that uses AllProviders as the wrapper to allow testing components that depend on ChakraUI
 export const renderWithChakra = (
   ui: ReactElement,
   options?: Omit<RenderOptions, 'wrapper'>

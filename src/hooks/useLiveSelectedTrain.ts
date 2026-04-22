@@ -5,7 +5,7 @@ import type { Train } from '../types';
 // live tracking status states
 export type LiveTrackingStatus = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'disconnected' | 'unavailable' | 'error';
 
-interface LiveTrainUpdate {
+export interface LiveTrainUpdate {
   trainId?: string;
   activationId?: number;
   scheduleId?: number;
@@ -37,6 +37,15 @@ export const mergeLiveTrain = (train: Train, update: LiveTrainUpdate): Train => 
     lastReportedLatitude: typeof update.lastReportedLatitude === 'number' ? update.lastReportedLatitude : train.lastReportedLatitude,
     lastReportedLongitude: typeof update.lastReportedLongitude === 'number' ? update.lastReportedLongitude : train.lastReportedLongitude,
   };
+};
+
+// identifies whether a socket payload belongs to the current selected train
+export const isLiveUpdateForTrain = (train: Train, update: LiveTrainUpdate): boolean => {
+  if (update.trainId) {
+    return update.trainId === train.trainId;
+  }
+
+  return update.activationId === train.activationId && update.scheduleId === train.scheduleId;
 };
 
 
@@ -109,11 +118,7 @@ const useLiveSelectedTrain = (
       const activeTrain = selectedTrainRef.current;
       if (!activeTrain) return;
 
-      const sameTrain = payload.trainId
-        ? payload.trainId === activeTrain.trainId
-        : payload.activationId === activeTrain.activationId && payload.scheduleId === activeTrain.scheduleId;
-
-      if (!sameTrain) return;
+      if (!isLiveUpdateForTrain(activeTrain, payload)) return;
 
       setSocketStatus('live');
       setLastUpdated(new Date());
