@@ -156,7 +156,7 @@ VELOCITI/
 |   |-- theme.ts                  # Shared colours and Chakra theme
 |   `-- types.ts                  # Shared TypeScript interfaces
 |-- server.js                     # Production server and Socket.IO live polling
-|-- TESTING_NOTES.md              # Detailed Jest testing plan
+|-- TESTING_PLAN.md              # Detailed Jest testing plan
 |-- jest.config.cjs               # Jest configuration
 |-- package.json                  # Scripts and dependencies
 `-- vite.config.ts                # Vite configuration
