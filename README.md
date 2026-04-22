@@ -79,7 +79,7 @@ The screenshots below are stored in `docs/screenshots/` and demonstrate the main
 
 ### National Map Home
 
-Initial national map view with station search mode, train search mode, and map controls.
+Initial national map view with dual search modes station/train, and map controls
 
 ![National map home](docs/screenshots/01-national-map-home.png)
 
@@ -101,23 +101,11 @@ Selected train route with numbered stops, current train position, completed rout
 
 ![Train route map](docs/screenshots/04-train-route-map.png)
 
-### Dark Mode Layer
-
-Map layer selector with the Dark Mode basemap active.
-
-![Dark layer menu](docs/screenshots/05-dark-layer-menu.png)
-
 ### Station Marker Overlay
 
-Station overlay enabled, showing the wider rail network as TIPLOC markers.
+Station overlay enabled, showing the wider rail network as TIPLOC markers. Clicking a marker triggers an automated search for the TIPLOC.
 
 ![Station layer network](docs/screenshots/06-station-layer-network.png)
-
-### Empty Search State
-
-Station search with no active trains found, while the station overlay remains available for exploration.
-
-![Empty station search](docs/screenshots/07-empty-station-search.png)
 
 ### Open Street Layer
 
@@ -125,17 +113,23 @@ Open Street basemap selected from the layer menu.
 
 ![Open Street layer](docs/screenshots/08-open-street-layer.png)
 
+### Dark Mode Layer
+
+Map layer selector with the Dark Mode basemap active.
+
+![Dark layer menu](docs/screenshots/05-dark-layer-menu.png)
+
 ## Tech Stack
 
-- React 19
+- React
 - TypeScript
 - Vite
-- Chakra UI
+- ChakraUI V2
 - Leaflet and React Leaflet
-- Socket.IO and Socket.IO Client
-- Express
-- Jest
+- Socket.io and Socket.io Client
+- ExpressJs
 - React Testing Library
+- Jest
 - ts-jest
 
 ## Project Structure
@@ -155,11 +149,11 @@ VELOCITI/
 |   |   `-- sidebar/              # Search UI and train results
 |   |-- data/                     # Local TIPLOC dataset and lookup helpers
 |   |-- hooks/                    # Live selected train socket hook
-|   |-- tests/                    # Jest unit tests and test utilities
+|   |-- tests/                    # Jest unit tests
 |   |-- utils/                    # Train status and time helpers
-|   |-- App.tsx                   # Main app state wiring
-|   |-- layout.tsx                # Desktop/mobile page layout
-|   |-- main.tsx                  # React entry point
+|   |-- App.tsx                   # Main app
+|   |-- layout.tsx                # Main layout structure desktop/mobile
+|   |-- main.tsx                  # React entry point with ChakraUI provider
 |   |-- theme.ts                  # Shared colours and Chakra theme
 |   `-- types.ts                  # Shared TypeScript interfaces
 |-- server.js                     # Production server and Socket.IO live polling
@@ -403,47 +397,3 @@ Try:
 ### Large chunk warning during build
 
 Vite may warn that the production JavaScript bundle is larger than 500 kB. This is currently expected because the app includes mapping libraries and a large local TIPLOC dataset.
-
-Possible future improvements:
-
-- Lazy-load map-heavy components.
-- Split the TIPLOC dataset.
-- Configure Rollup manual chunks.
-- Load station data from a backend endpoint instead of bundling all data into the client.
-
-## Development Notes
-
-### Search flow
-
-Station search uses the local TIPLOC dataset for autocomplete and coordinate fallback, then requests live station train data from the API. Headcode search scans a curated list of major UK rail hubs and de-duplicates matching trains by `trainId`.
-
-### Route rendering
-
-When a train is selected, `RouteRenderer` fetches the train schedule and movement data. It draws the full route, then splits the route into completed and remaining sections based on movement events or the train's last reported location.
-
-### Live updates
-
-The frontend subscribes to live updates for the selected train only. The server polls the schedule and movement endpoints every 15 seconds and emits `train:update` events over Socket.IO.
-
-### Testing approach
-
-The unit tests are intentionally focused on high-value behaviour rather than snapshots. They mock network and browser boundaries, use realistic fixtures, and check the logic that controls user-visible results.
-
-### Recommended workflow
-
-Before opening a pull request or submitting coursework:
-
-```bash
-npm test
-npm run build
-```
-
-Also manually check:
-
-- Station search
-- Train search
-- Selecting a train card
-- Route rendering
-- Map layer switching
-- Show/Hide Stations
-- Live detail panel refresh
