@@ -15,7 +15,6 @@ The project is built as a Vite frontend with an optional Express and Socket.IO s
 - [Running the project](#running-the-project)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
-- [Development notes](#development-notes)
 
 ## Features
 
@@ -228,7 +227,7 @@ http://localhost:5173
 In a second terminal, run:
 
 ```bash
-npm run dev:server
+node --env-file=.env server.js
 ```
 
 The server runs on:
